@@ -114,6 +114,12 @@ Before you install, check the rules of the server you play on: see [Servers](doc
   renderer, with addresses for the 2019 MezeLounge client.
 - [Contributing](CONTRIBUTING.md).
 
+## Support
+
+MHFZ Plus is free and open source, and it stays that way. If you'd like to support the work, you can leave a tip on
+[Ko-fi](https://ko-fi.com/sushiisquared). It's completely optional: everything works the same either way, and bug
+reports with a clip help just as much.
+
 ## Credits
 
 See [docs/CREDITS.md](docs/CREDITS.md): the tools and projects this built on, and the server communities that keep
