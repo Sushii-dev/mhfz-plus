@@ -6,8 +6,8 @@ adding input latency. An optional launcher can also apply an English translation
 > Fan project. Not affiliated with, endorsed by or connected to Capcom or any server team. Contains no Capcom code
 > and no game files. See [Legal notes](docs/LEGAL.md).
 >
-> **Made with AI.** Almost all code and documentation here was written by an AI coding agent (Anthropic's Claude),
-> directed and tested in game by the maintainer. Details: [AI usage](docs/AI-USAGE.md).
+> **Made with AI.** Sushii-dev researched, designed, directed and tested the project; an AI coding agent
+> (Anthropic's Claude) wrote most of the code and documentation under that direction. Details: [AI usage](docs/AI-USAGE.md).
 
 ## What it does
 

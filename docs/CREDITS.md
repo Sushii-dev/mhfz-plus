@@ -37,6 +37,7 @@ The translation pipeline isn't part of this repository; it's credited here becau
 
 ## Built with
 
-- **Claude** (Anthropic), through Claude Code, wrote nearly all of the code and documentation. See
-  [AI-USAGE.md](AI-USAGE.md).
-- **The maintainer** did the in-game testing, recorded the glitch clips and decided what shipped.
+- **[Sushii-dev](https://github.com/Sushii-dev)** led the project: the research, the rules and the structure of the
+  work, the prompts that steered the agent, the in-game testing and diagnosis, and every decision on what shipped.
+- **Claude** (Anthropic), through Claude Code, wrote most of the code and documentation under that direction.
+  See [AI-USAGE.md](AI-USAGE.md).
