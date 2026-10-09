@@ -12,7 +12,9 @@ extern "C" {
 void* g_real[32];
 void LoadRealD3D9() {}
 char g_d3d9Backend[MAX_PATH];
+wchar_t g_d3d9BackendW[MAX_PATH];
 HMODULE g_realD3D9;
+bool UseSystemD3D9() { return false; }
 }
 
 struct Reader {

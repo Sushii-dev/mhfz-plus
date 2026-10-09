@@ -98,7 +98,7 @@ struct Config {
     int debug_replayhash = 0;       // instead of the in-between frames: three at fixed points (0.37 twice, 0.71), their images hashed
                                     // (tools\replayhash.ps1: an optimisation of the replay must give the same images)
     // new settings go at the end: pairing captures store this struct as it is, and the bench copies the prefix
-    int pair_threads = 0;           // threads for the pairing: 0 = automatic (physical cores - 2, at most 6), 1 = off
+    int pair_threads = 0;           // threads for the pairing: 0 = automatic (logical processors - 4 or cores - 2, at most 8), 1 = off
     int replay_filter = 1;          // in-between frames skip constant uploads that change no register (same GPU state)
     int gpu_queue = 1;              // in-between frames the GPU may still be drawing while the next is built (0 = wait each)
     int exc_log = 0;                // diagnostics: log every exception the process raises (first in line, passed on unchanged)
@@ -5315,19 +5315,20 @@ static DWORD WINAPI WorkerMain(void* p) {
 }
 static void PoolInit() {
     if (g_wkSem) return;
-    // automatic: the physical cores less two (the game's render thread, the driver's thread), at most 6 threads
+    // automatic: scales with the CPU - its logical processors less four (the game's other threads, the driver's and
+    // DXVK's) or the physical cores less two, whichever is more, at most kMaxThreads (6 cores / 12 threads: 8, 4/8: 4,
+    // 6/6: 4, 4/4: 2, 2/4: 1 = off)
     int cores = 0;
     DWORD len = 0;
     GetLogicalProcessorInformation(nullptr, &len);
     std::vector<SYSTEM_LOGICAL_PROCESSOR_INFORMATION> lpi(len / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION) + 1);
     if (len && GetLogicalProcessorInformation(lpi.data(), &len))
         for (DWORD i = 0; i < len / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION); i++) cores += lpi[i].Relationship == RelationProcessorCore;
-    if (cores <= 0) {
-        SYSTEM_INFO si;
-        GetSystemInfo(&si);
-        cores = (int)si.dwNumberOfProcessors / 2;
-    }
-    int want = C.pair_threads > 0 ? C.pair_threads - 1 : std::min(6, std::max(1, cores - 2)) - 1;
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
+    int logical = std::max(1, (int)si.dwNumberOfProcessors);
+    if (cores <= 0) cores = std::max(1, logical / 2);
+    int want = C.pair_threads > 0 ? C.pair_threads - 1 : std::max(1, std::max(cores - 2, logical - 4)) - 1;
     g_workers = std::max(0, std::min(kMaxThreads - 1, want));
     g_wkSem = CreateSemaphoreA(nullptr, 0, kMaxThreads, nullptr);
     g_wkDone = CreateEventA(nullptr, FALSE, FALSE, nullptr);
@@ -5336,7 +5337,7 @@ static void PoolInit() {
         if (!h) { g_workers = k; break; }
         CloseHandle(h);
     }
-    Log("pairing threads: %d (+ render thread), %d cores", g_workers, cores);
+    Log("pairing threads: %d (+ render thread), %d cores, %d logical processors", g_workers, cores, logical);
 }
 template <class F>
 static void ParallelFor(int count, F& f) {  // f(item, thread index); thread 0 = the caller

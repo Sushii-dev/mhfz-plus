@@ -1,4 +1,4 @@
-MHFZ Plus 1.3.2
+MHFZ Plus 1.3.3
 ===============
 
 English translation and high frame rate for Monster Hunter Frontier Z, on the MezeLounge and Rain servers.

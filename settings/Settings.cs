@@ -145,7 +145,7 @@ namespace MhfzPlus
             Choice("regroup", "2", "Regroup shadow passes", "Draws passes that switch target on every draw one target after the other (crowds).", true,
                    "2", "Game frames and in-between frames", "1", "In-between frames only", "0", "Off");
             Bool("shadow_reuse", "0", "Reuse the game frame's shadow maps", "", true);
-            Int("pair_threads", "0", 0, 16, "Matching threads (0 = automatic)", "", true);
+            Int("pair_threads", "0", 0, 8, "Matching threads (0 = automatic)", "Automatic scales with your CPU: its threads minus 4 (or cores minus 2, if more), at most 8.", true);
             Bool("pair_async", "1", "Match in the background", "", true);
             Bool("precompute", "1", "Precompute blended constants on all threads", "", true);
             Bool("gpu_queue", "1", "Let the GPU work on one frame while the next is built", "", true);
