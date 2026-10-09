@@ -59,8 +59,8 @@ See [CREDITS.md](CREDITS.md). In short:
 
 - The release binaries are built with llvm-mingw. They statically link parts of LLVM's runtime (libc++, libunwind,
   compiler-rt: Apache-2.0 with LLVM exception) and the mingw-w64 startup code (permissive licenses).
-- [DXVK](https://github.com/doitsujin/dxvk) (zlib license) can be used as the Direct3D backend. It isn't bundled;
-  players add it themselves.
+- [DXVK](https://github.com/doitsujin/dxvk) 3.1.1 (zlib license) comes with the release as the optional "Graphics backend:
+  DXVK": its 32-bit `d3d9.dll`, unmodified, with its license text (`fps\dxvk\LICENSE.txt`). It isn't in this repository.
 
 ## No warranty
 

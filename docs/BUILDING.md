@@ -40,6 +40,12 @@ player's log into function names. Keep the map of every build you hand out.
   first ([LEGAL.md](LEGAL.md#servers)).
 - **With DXVK:** set `d3d9_backend=<path to DXVK's 32-bit d3d9.dll>` in `mhfz-fps.ini`.
 
+## DXVK
+
+The package includes DXVK's 32-bit `d3d9.dll` (the "Graphics backend: DXVK" option). Download the
+[DXVK 3.1.1 release](https://github.com/doitsujin/dxvk/releases/tag/v3.1.1) and put its `x32\d3d9.dll` in
+`third_party\dxvk-3.1.1\x32\`. Its license text is in `package\fps\dxvk\LICENSE.txt`.
+
 ## The English patch data
 
 `tools\package.ps1` expects the translation data in `dist-work\english\<server>\` (a `manifest.txt` and one

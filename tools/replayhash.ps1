@@ -36,7 +36,7 @@ $scenes = [ordered]@{ plain = "5"; billboards = "5 1"; swap = "5 0 1"; tag = "5 
  all = "6 1 1 1 2 1 1 1 1 1" }
 foreach ($s in $scenes.Keys) {
     Set-Content "$work\mhfz-fps.ini" $base
-    Start-Process "$work\testapp.exe" -ArgumentList ($scenes[$s] -split ' ') -WorkingDirectory $work -Wait
+    Start-Process -NoNewWindow "$work\testapp.exe" -ArgumentList ($scenes[$s] -split ' ') -WorkingDirectory $work -Wait
     Get-Content "$work\mhfz-fps.log" | Where-Object { $_ -match 'replayhash (\d+) (.*)$' } | ForEach-Object { "$($Matches[1]) $($Matches[2])" } |
         Set-Content "$Out\$s.txt"
     "{0,-14} {1} ticks" -f $s, (Get-Content "$Out\$s.txt").Count

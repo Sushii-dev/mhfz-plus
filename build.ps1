@@ -14,8 +14,13 @@ if ($Tests) {
     $dir = if ($TestsOut) { $TestsOut } else { "$root\build" }
     New-Item -ItemType Directory -Force $dir | Out-Null
     foreach ($src in Get-ChildItem "$root\test\*.cpp") {
+        if ($src.BaseName -eq 'nullbackend') {  # (a stand-in d3d9_backend DLL, see the file)
+            & $cc --target=i686-w64-mingw32 -O2 -shared -static -s "-Wl,--kill-at" -o "$dir\nullbackend.dll" $src.FullName
+            if ($LASTEXITCODE -ne 0) { throw "nullbackend.cpp: build failed" }
+            continue
+        }
         & $cc --target=i686-w64-mingw32 -O2 -std=c++20 -static -s -Wall -Wno-unused-function -Wno-format `
-            -o "$dir\$($src.BaseName).exe" $src.FullName -ld3d9 -lwinmm -luser32 -lgdi32
+            -o "$dir\$($src.BaseName).exe" $src.FullName -ld3d9 -ldinput8 -ldxguid -lwinmm -luser32 -lgdi32
         if ($LASTEXITCODE -ne 0) { throw "$($src.Name): build failed" }
     }
     Get-ChildItem "$dir\*.exe" | Where-Object { Test-Path "$root\test\$($_.BaseName).cpp" } | Select-Object Name, Length, LastWriteTime

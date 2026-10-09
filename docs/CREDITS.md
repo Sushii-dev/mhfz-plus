@@ -20,7 +20,7 @@ built and analysed with, the projects that documented the game, and the teams th
 | [pefile](https://github.com/erocarrera/pefile) | reading PE files in the analysis scripts | MIT |
 | [llvm-mingw](https://github.com/mstorsjo/llvm-mingw) (we used the copy that ships with [Windhawk](https://windhawk.net/)) | compiling the mod, launcher and test tools | Apache-2.0 with LLVM exception; mingw-w64 runtime: permissive licenses |
 | C# compiler of the .NET Framework (part of Windows) | building the settings app | Microsoft |
-| [DXVK](https://github.com/doitsujin/dxvk) | optional Direct3D 9 backend; also used to test the mod on Vulkan | zlib |
+| [DXVK](https://github.com/doitsujin/dxvk) (Philip Rebohle and contributors) | the bundled Direct3D 9 backend on Vulkan (unmodified 3.1.1, since MHFZ Plus 1.3); also used to test the mod | zlib |
 | Python | analysis and test scripts | PSF |
 
 Microsoft's Direct3D 9 documentation describes the API surface the mod hooks.

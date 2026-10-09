@@ -10,7 +10,7 @@ Copy-Item $(if ($Dll) { $Dll } else { "$b\d3d9.dll" }) "$w\d3d9.dll" -Force
 $hung = 0
 for ($r = 0; $r -lt $Runs; $r++) {
     Set-Content "$w\mhfz-fps.ini" ("[fps]`r`nmode=2`r`ntarget_fps=120`r`npresent_interval=0`r`nstats_interval=0`r`nretro=0`r`n" + ($Ini -replace ';', "`r`n") + "`r`n")
-    $p = Start-Process "$w\testapp.exe" -ArgumentList ($Scene -split ' ') -WorkingDirectory $w -PassThru
+    $p = Start-Process -NoNewWindow "$w\testapp.exe" -ArgumentList ($Scene -split ' ') -WorkingDirectory $w -PassThru
     if (-not $p.WaitForExit($LimitSec * 1000)) {
         $hung++
         $last = (Get-Content "$w\mhfz-fps.log" -Tail 1)

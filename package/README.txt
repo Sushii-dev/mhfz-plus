@@ -1,4 +1,4 @@
-MHFZ Plus 1.2
+MHFZ Plus 1.3
 =============
 
 English translation and high frame rate for Monster Hunter Frontier Z, on the MezeLounge and Rain servers.
@@ -27,6 +27,7 @@ INSTALL
   1. Extract the whole zip (right-click > Extract All). Don't run it from inside the zip.
   2. Double-click Install.cmd.
   3. Check the game folders it found (or Browse to them), choose what you want, press Install.
+     Leave "Use DXVK" on unless you know your graphics card has no Vulkan support (see Graphics backend below).
      If you choose Steam, Steam closes for a moment and starts again.
 
 Install.cmd can be run again any time to change options, move folders or update to a new version.
@@ -71,6 +72,10 @@ The most used settings (the window shows them all; "Show advanced settings" show
   VSync for the extra frames   on: only if you play in exclusive fullscreen without G-Sync/FreeSync and see tearing.
   Lower input latency   optional, off by default (Ctrl+Shift+5 switches it in game): the game reads your input a
                         few milliseconds later without losing any frames or changing speed.
+  Graphics backend      DXVK (comes with MHFZ Plus) or Windows Direct3D 9. DXVK runs the game's Direct3D 9 on Vulkan
+                        and needs much less CPU time per frame: in our tests 50-70% more frames in towns and crowds.
+                        It needs a graphics card with Vulkan 1.3 (most from 2016 on); if it can't start, Windows'
+                        Direct3D is used and a message says so. Applies at the next game start.
   Catch quick button taps   optional, off by default: a very quick key or button tap can fall between two of the
                         game's input reads (30 a second) and get lost - a menu press that does nothing. This catches it.
   Keys                  Pause: mod on/off.  Insert: FPS counter.  Delete: save a clip (see REPORTING A GLITCH).
@@ -84,6 +89,8 @@ The settings are a plain text file too (mhfz-fps.ini, with a comment on every li
 "Open the file" in the settings window shows it.
 
 Notes:
+  * More frames on a slower PC: use Graphics backend DXVK (the biggest gain), or cap the frame rate at 60/90/120
+    for steadier pacing.
   * Your PC has to draw several frames per game tick. Very high targets (175 Hz and up) may top out
     around 140-150 fps depending on the scene; that's normal.
   * If you see a flicker, a flash or something jumping, please report it with a clip (below).
@@ -112,6 +119,8 @@ IF SOMETHING GOES WRONG
     translation (menus, items, quests, town dialogue).
   * After a game update, files that changed stay Japanese until the translation is updated. MHFZ Plus never
     overwrites a game file it doesn't recognise.
+  * The game doesn't start or freezes right at the start: set Graphics backend to Windows Direct3D 9 in the
+    settings and try again, and send mhfz-fps.log.
   * Antivirus: the frame-rate mod is a d3d9.dll that hooks Direct3D 9, which some antivirus programs dislike.
     It may need an exception.
   * Logs, to include when you report a problem:

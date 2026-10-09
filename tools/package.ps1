@@ -2,7 +2,7 @@
 #   Install.cmd, README.txt, setup\*.ps1, payload\(MHFZ-Plus.exe, MHFZ-Plus-Settings.exe, version.txt, fps\, english\)
 # Usage: tools\package.ps1 [-NoBuild] [-Public]
 #   -Public   the GitHub release: no English data (derived from the game's text) -> dist\public\MHFZ-Plus-<version>.zip
-param([switch]$NoBuild, [string]$Version = "1.2", [switch]$Public)
+param([switch]$NoBuild, [string]$Version = "1.3", [switch]$Public)
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot
 if (-not $NoBuild) {
@@ -22,6 +22,9 @@ Copy-Item "$root\build\MHFZ-Plus.exe", "$root\build\MHFZ-Plus-Settings.exe" "$ou
 Set-Content "$out\payload\version.txt" $Version
 Copy-Item "$root\package\README.txt" "$out\payload"
 Copy-Item "$root\build\d3d9.dll", "$root\package\fps\mhfz-fps.ini" "$out\payload\fps"
+# DXVK 3.1.1 (32-bit d3d9.dll, unmodified; zlib license) for the "Graphics backend: DXVK" option
+New-Item -ItemType Directory -Force "$out\payload\fps\dxvk" | Out-Null
+Copy-Item "$root\third_party\dxvk-3.1.1\x32\d3d9.dll", "$root\package\fps\dxvk\LICENSE.txt", "$root\package\fps\dxvk\README.txt" "$out\payload\fps\dxvk"
 if (-not $Public) { New-Item -ItemType Directory -Force "$out\payload\english" | Out-Null; Copy-Item "$root\dist-work\english\*" "$out\payload\english" -Recurse }
 else {
     $note = "This download doesn't include the English translation (it is made from the game's own text, so it isn't`r`n" +

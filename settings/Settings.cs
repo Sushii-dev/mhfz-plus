@@ -22,7 +22,7 @@ using System.Windows.Forms;
 
 [assembly: System.Reflection.AssemblyTitle("MHFZ Plus Settings")]
 [assembly: System.Reflection.AssemblyProduct("MHFZ Plus")]
-[assembly: System.Reflection.AssemblyVersion("1.2.0.0")]
+[assembly: System.Reflection.AssemblyVersion("1.3.0.0")]
 
 namespace MhfzPlus
 {
@@ -81,6 +81,11 @@ namespace MhfzPlus
             Bool("input_latch", "0", "Catch quick button taps (testing)", "The game reads keyboard, mouse and controller once per tick (30 times a " +
                  "second), so a very quick tap can fall between two reads and get lost - in menus it feels like a press that did nothing. " +
                  "With this on, such a tap is caught and handed to the game at its next read. Nothing is delayed.");
+            // ("dxvk" stands for the copy that comes with MHFZ Plus: the ini gets its full path; another path shows as custom)
+            Choice("d3d9_backend", "", "Graphics backend", "DXVK runs the game's Direct3D 9 on Vulkan. It needs much less CPU time per frame, so " +
+                   "more in-between frames fit: in our tests 50-70% more in towns and crowds. Needs a graphics card with Vulkan 1.3 (most from " +
+                   "2016 on); if it can't start there, Windows' Direct3D is used and the game says so. Applies at the next game start.", false,
+                   "dxvk", "DXVK (Vulkan): faster", "", "Windows Direct3D 9");
             Choice("mode", "2", "Mode", "Interpolate is the normal mode. The others are for testing.", true,
                    "2", "Interpolate (normal)", "0", "Vanilla 30 fps (mod loaded, idle)", "1", "Repeat frames without interpolation (testing)");
             Bool("precise_tick", "0", "Exact 33.3 ms ticks", "Off keeps the game's own tick timing exactly (recommended).", true);
@@ -147,7 +152,6 @@ namespace MhfzPlus
             Bool("lock_copy", "1", "Copy textures the game rewrites mid-frame", "", true);
             Bool("replay_filter", "1", "Skip constant uploads that change nothing", "", true);
             Bool("flush_endscene", "0", "Run the game frame at every EndScene", "", true);
-            Add("d3d9_backend", Kind.Text, "", "Direct3D 9 implementation", "Empty: Windows' own. A path such as dxvk\\d3d9.dll uses that one (DXVK).", true);
 
             group = "Diagnostics";
             Int("stats_interval", "60", 0, 3600, "Stats line in the log every (seconds, 0 = off)", "mhfz-fps.log next to the game.");
@@ -307,6 +311,7 @@ namespace MhfzPlus
         public string LiveIni { get { return System.IO.Path.Combine(Dir, "mhfz-fps.ini"); } }
         public string KeptIni { get { return System.IO.Path.Combine(Base, "fps-state", Name, "mhfz-fps.ini"); } }
         public string DefaultIni { get { return System.IO.Path.Combine(Base, "fps", "mhfz-fps.ini"); } }
+        public string BundledDxvk { get { return System.IO.Path.Combine(Base, "fps", "dxvk", "d3d9.dll"); } }  // (comes with MHFZ Plus 1.3+)
         // the file the mod reads (or will read at the next start)
         public string IniPath { get { return Mode == "swap" && !File.Exists(LiveIni) ? KeptIni : LiveIni; } }
         public bool Live { get { return Mode == "swap" && File.Exists(LiveIni); } }
@@ -523,6 +528,7 @@ namespace MhfzPlus
                 string v = ini.Get(s.Key);
                 values[s.Key] = v == null ? s.Default : s.Kind == Kind.Key ? Keys2.Normalize(v) : v;
             }
+            if (string.Equals(values["d3d9_backend"], game.BundledDxvk, StringComparison.OrdinalIgnoreCase)) values["d3d9_backend"] = "dxvk";
             dirty = false;
             Build();
             UpdateStatus();
@@ -540,7 +546,7 @@ namespace MhfzPlus
         {
             if (MessageBox.Show(this, "Set every setting on this page and the advanced ones back to the recommended values?\n(Keys too.)", Text,
                                 MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
-            foreach (var s in Schema.All()) values[s.Key] = s.Default;
+            foreach (var s in Schema.All()) if (s.Key != "d3d9_backend") values[s.Key] = s.Default;  // (the backend stays as chosen)
             dirty = true;
             Build();
         }
@@ -557,8 +563,13 @@ namespace MhfzPlus
                     File.Copy(game.DefaultIni, path);
                 }
                 var cur = new IniFile(path);
+                if (values["d3d9_backend"] == "dxvk" && !File.Exists(game.BundledDxvk)) {
+                    MessageBox.Show(this, "DXVK isn't installed yet. Run the MHFZ Plus setup (1.3 or newer) to add it; until then the game uses " +
+                                    "Windows' Direct3D.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
                 foreach (var s in Schema.All()) {
                     string v = values[s.Key];
+                    if (s.Key == "d3d9_backend" && v == "dxvk") v = game.BundledDxvk;
                     string old = cur.Get(s.Key);
                     // (only what differs from what is there, or from the default when the file doesn't name it)
                     if (old == null ? v == s.Default : (s.Kind == Kind.Key ? Keys2.Normalize(old) == v : old == v)) continue;
@@ -736,6 +747,7 @@ namespace MhfzPlus
                 int eq = kv.IndexOf('=');
                 if (eq <= 0) { Console.WriteLine("expected key=value: " + kv); return 1; }
                 string k = kv.Substring(0, eq).Trim(), v = kv.Substring(eq + 1).Trim();
+                if (k == "d3d9_backend" && v == "dxvk") v = g.BundledDxvk;  // (the copy that comes with MHFZ Plus)
                 ini.Set(k, v);
                 Console.WriteLine("set " + k + "=" + v);
             }

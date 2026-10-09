@@ -37,8 +37,11 @@ static uint64_t g_predictCalls, g_predictDiff;
 
 extern "C" void LoadRealD3D9();
 extern "C" void* g_real[32];
-extern "C" char g_d3d9Backend[MAX_PATH];
+extern "C" char g_d3d9Backend[MAX_PATH];    // (UTF-8, for the log)
+extern "C" wchar_t g_d3d9BackendW[MAX_PATH];  // (what is loaded)
 extern "C" HMODULE g_realD3D9;
+extern "C" bool UseSystemD3D9();
+static bool g_backendFellBack;  // d3d9_backend loaded but couldn't start: Windows' own is used (told once in game)
 
 // ------------------------------------------------------------------------------------------------ config/log
 struct Config {
@@ -502,11 +505,25 @@ static void SetupBackend() {
     snprintf(ini, sizeof ini, "%s\\mhfz-fps.ini", g_dir);
     GetPrivateProfileStringA("fps", "d3d9_backend", "", v, MAX_PATH, ini);
     if (!v[0]) return;
-    if ((v[0] && v[1] == ':') || (v[0] == '\\' && v[1] == '\\')) snprintf(g_d3d9Backend, MAX_PATH, "%s", v);
-    else snprintf(g_d3d9Backend, MAX_PATH, "%s\\%s", g_dir, v);
-    if (GetFileAttributesA(g_d3d9Backend) == INVALID_FILE_ATTRIBUTES) {
+    // the settings app and setup write UTF-8 - the default install folder holds the Windows user name, which may have
+    // an ø or an é - and a file saved in the old ANSI code page still works; the path is used as Unicode from here on
+    wchar_t wv[MAX_PATH];
+    if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, v, -1, wv, MAX_PATH) && !MultiByteToWideChar(CP_ACP, 0, v, -1, wv, MAX_PATH)) return;
+    if ((wv[0] && wv[1] == L':') || (wv[0] == L'\\' && wv[1] == L'\\')) lstrcpynW(g_d3d9BackendW, wv, MAX_PATH);
+    else {
+        wchar_t dir[MAX_PATH];
+        HMODULE self = nullptr;
+        GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCWSTR)(void*)&SetupBackend, &self);
+        GetModuleFileNameW(self, dir, MAX_PATH);
+        if (wchar_t* s = wcsrchr(dir, L'\\')) *s = 0;
+        _snwprintf(g_d3d9BackendW, MAX_PATH, L"%ls\\%ls", dir, wv);
+        g_d3d9BackendW[MAX_PATH - 1] = 0;
+    }
+    WideCharToMultiByte(CP_UTF8, 0, g_d3d9BackendW, -1, g_d3d9Backend, MAX_PATH, nullptr, nullptr);  // (for the log)
+    if (GetFileAttributesW(g_d3d9BackendW) == INVALID_FILE_ATTRIBUTES) {
         Log("d3d9_backend %s not found - using Windows' own d3d9.dll", g_d3d9Backend);
         g_d3d9Backend[0] = 0;
+        g_d3d9BackendW[0] = 0;
         return;
     }
     if (GetPrivateProfileIntA("fps", "dxvk_log", 0, ini)) {
@@ -516,11 +533,11 @@ static void SetupBackend() {
         SetEnvironmentVariableA("DXVK_LOG_LEVEL", "none");
         SetEnvironmentVariableA("DXVK_LOG_PATH", "none");
     }
-    char conf[MAX_PATH];
-    snprintf(conf, sizeof conf, "%s", g_d3d9Backend);
-    if (char* s = strrchr(conf, '\\')) {
-        snprintf(s + 1, sizeof conf - (s + 1 - conf), "dxvk.conf");
-        if (GetFileAttributesA(conf) != INVALID_FILE_ATTRIBUTES) SetEnvironmentVariableA("DXVK_CONFIG_FILE", conf);
+    wchar_t conf[MAX_PATH];
+    lstrcpynW(conf, g_d3d9BackendW, MAX_PATH);
+    if (wchar_t* s = wcsrchr(conf, L'\\')) {
+        lstrcpynW(s + 1, L"dxvk.conf", MAX_PATH - (int)(s + 1 - conf));
+        if (GetFileAttributesW(conf) != INVALID_FILE_ATTRIBUTES) SetEnvironmentVariableW(L"DXVK_CONFIG_FILE", conf);
     }
 }
 
@@ -10470,6 +10487,7 @@ static HRESULT WINAPI hk_CreateDevice(IDirect3D9* self, UINT ad, D3DDEVTYPE type
         Log("keys (vk | 0x100 ctrl | 0x200 shift | 0x400 alt): save %#x, overlay %#x, camera paths %#x, light fix %#x, fog rule %#x, repeated objects %#x",
             C.key_capture, C.key_overlay, C.key_campaths, C.key_carry, C.key_nonpos, C.key_field);
         if (C.hotkeys) Toast("frame-rate mod on: Ctrl+Shift+1 camera paths, +2 light fix, +3 fog rule, +4 repeated objects, Delete saves");
+        if (g_backendFellBack) Toast("DXVK could not start on this PC (it needs Vulkan 1.3) - using Windows' Direct3D");
         BeginFrame();
     }
     return hr;
@@ -10481,9 +10499,22 @@ extern "C" IDirect3D9* WINAPI MyDirect3DCreate9(UINT sdk) {
     auto real = (IDirect3D9 * (WINAPI*)(UINT)) g_real[10];
     if (!real) { Log("real Direct3DCreate9 not found"); return nullptr; }
     IDirect3D9* d3d = real(sdk);
-    char backend[MAX_PATH] = "?";
-    GetModuleFileNameA(g_realD3D9, backend, MAX_PATH);
+    char backend[MAX_PATH * 3] = "?";
+    auto backendName = [&] {  // (UTF-8 for the log: the path may hold a user name with ø, é...)
+        wchar_t w[MAX_PATH];
+        if (GetModuleFileNameW(g_realD3D9, w, MAX_PATH)) WideCharToMultiByte(CP_UTF8, 0, w, -1, backend, sizeof backend, nullptr, nullptr);
+    };
+    backendName();
     Log("Direct3DCreate9(%u) -> %p (d3d9: %s)", sdk, (void*)d3d, backend);
+    // a backend that loaded but can't start (DXVK without a Vulkan 1.3 driver returns nothing): the game still starts,
+    // on Windows' own Direct3D 9
+    if (!d3d && g_d3d9Backend[0] && UseSystemD3D9()) {
+        real = (IDirect3D9 * (WINAPI*)(UINT)) g_real[10];
+        d3d = real ? real(sdk) : nullptr;
+        backendName();
+        Log("the backend could not start - using Windows' own Direct3D 9 instead: -> %p (d3d9: %s)", (void*)d3d, backend);
+        g_backendFellBack = d3d != nullptr;
+    }
     if (d3d && C.enabled) {
         void* o = HookVT(*(void***)d3d, 16, (void*)&hk_CreateDevice);
         if (o) o_CreateDevice = (CreateDevice_t)o;

@@ -707,7 +707,7 @@ static void OpenLog(const wstr& name) {
     MoveFileExW(log.c_str(), Join(g_base, L"MHFZ-Plus-" + name + L".prev.log").c_str(), MOVEFILE_REPLACE_EXISTING);
     g_log = _wfopen(log.c_str(), L"w, ccs=UTF-8");
 }
-static const wchar_t* kVersion = L"1.0";
+static const wchar_t* kVersion = L"1.3";
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     wchar_t exe[MAX_PATH * 4];

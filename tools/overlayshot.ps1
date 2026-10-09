@@ -12,7 +12,7 @@ Add-Type -Namespace W -Name U -MemberDefinition @'
 public struct RECT { public int L, T, R, B; }
 '@
 Set-Content "$b\mhfz-fps.ini" ("[fps]`r`nmode=2`r`ntarget_fps=170`r`npresent_interval=0`r`nstats_interval=2`r`nselfcheck=0`r`nretro=0`r`noverlay=1`r`n" + ($Ini -replace ';', "`r`n") + "`r`n")
-$p = Start-Process "$b\testapp.exe" -ArgumentList ($AppArgs -split ' ') -WorkingDirectory $b -PassThru
+$p = Start-Process -NoNewWindow "$b\testapp.exe" -ArgumentList ($AppArgs -split ' ') -WorkingDirectory $b -PassThru
 Start-Sleep -Milliseconds $At
 $p.Refresh()
 $h = $p.MainWindowHandle

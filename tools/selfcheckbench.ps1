@@ -16,7 +16,7 @@ foreach ($d in ($Dlls -split '[,\s]+')) {
     foreach ($s in $names) {
         Remove-Item -Recurse -Force "$w\selfcheck" -ErrorAction SilentlyContinue
         Set-Content "$w\mhfz-fps.ini" ("[fps]`r`n" + ($Ini -replace ';', "`r`n") + "`r`nmode=2`r`ntarget_fps=120`r`npresent_interval=0`r`nstats_interval=0`r`nselfcheck=1`r`nselfcheck_interval_ms=200`r`nselfcheck_saves=0`r`nselfcheck_ablate=0`r`n")
-        Start-Process "$w\testapp.exe" -ArgumentList ($all[$s] -split ' ') -WorkingDirectory $w -Wait
+        Start-Process -NoNewWindow "$w\testapp.exe" -ArgumentList ($all[$s] -split ' ') -WorkingDirectory $w -Wait
         $m = @(); $bad = @()
         foreach ($l in Get-Content "$w\mhfz-fps.log") { if ($l -match 'selfcheck #\d+: mean error ([\d.]+), p99 block ([\d.]+), bad blocks ([\d.]+)%') { $m += [double]$Matches[1]; $bad += [double]$Matches[3] } }
         $am = if ($m.Count) { ($m | Measure-Object -Average).Average } else { -1 }

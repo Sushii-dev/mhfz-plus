@@ -2,6 +2,7 @@
 // Draws: a VS-constant-driven rotating triangle, a fixed-function SetTransform quad, and a moving DrawPrimitiveUP quad.
 #include <windows.h>
 #include <d3d9.h>
+#include "quietwin.h"
 #include <mmsystem.h>
 #include <cmath>
 #include <cstdio>
@@ -33,7 +34,7 @@ int main(int argc, char** argv) {
     wc.hInstance = GetModuleHandleA(nullptr);
     wc.lpszClassName = "mhfzfpstest";
     RegisterClassA(&wc);
-    HWND hw = CreateWindowA("mhfzfpstest", "mhfz-fps test", WS_OVERLAPPEDWINDOW | WS_VISIBLE, 100, 100, 800, 600, 0, 0, wc.hInstance, 0);
+    HWND hw = QuietWindow("mhfzfpstest", "mhfz-fps test", 800, 600, wc.hInstance);
     IDirect3D9* d3d = Direct3DCreate9(D3D_SDK_VERSION);
     D3DPRESENT_PARAMETERS pp{};
     pp.Windowed = TRUE;

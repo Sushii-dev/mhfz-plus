@@ -9,7 +9,7 @@ if (-not (Test-Path "$w\dxvk")) { Copy-Item "$b\dxvk" "$w\dxvk" -Recurse -Force 
 foreach ($dll in ($Dlls -split ',')) {
     Copy-Item $dll "$w\d3d9.dll" -Force
     Set-Content "$w\mhfz-fps.ini" ("[fps]`r`nmode=2`r`ntarget_fps=0`r`npresent_interval=0`r`nstats_interval=4`r`n" + ($Ini -replace ';', "`r`n") + "`r`n")
-    Start-Process "$w\testapp.exe" -ArgumentList ($Scene -split ' ') -WorkingDirectory $w -Wait -RedirectStandardOutput "$w\out.txt" | Out-Null
+    Start-Process -NoNewWindow "$w\testapp.exe" -ArgumentList ($Scene -split ' ') -WorkingDirectory $w -Wait -RedirectStandardOutput "$w\out.txt" | Out-Null
     "== $(Split-Path $dll -Leaf)  $(Get-Content "$w\out.txt" | Where-Object { $_ -match 'ticks:' })"
     Get-Content "$w\mhfz-fps.log" | Where-Object { $_ -match '\] stats ' } | ForEach-Object {
         if ($_ -match 'real ([\d.]+) fps, shown ([\d.]+) fps .*late (\d+)( \(([\d.]+) ms avg, GPU waits cut (\d+)\))? \| .*present ([\d.]+) ms') {

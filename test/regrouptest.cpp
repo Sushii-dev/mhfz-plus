@@ -6,6 +6,7 @@
 //   regrouptest.exe [frames] [sleep ms] [dump frame] [still] [mips] [scale]
 #include <windows.h>
 #include <d3d9.h>
+#include "quietwin.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -32,7 +33,7 @@ int main(int argc, char** argv) {
     wc.hInstance = GetModuleHandleA(nullptr);
     wc.lpszClassName = "regrouptest";
     RegisterClassA(&wc);
-    HWND hw = CreateWindowA("regrouptest", "regroup test", WS_OVERLAPPEDWINDOW | WS_VISIBLE, 50, 50, 816, 639, 0, 0, wc.hInstance, 0);
+    HWND hw = QuietWindow("regrouptest", "regroup test", 816, 639, wc.hInstance);
     IDirect3D9* d3d = Direct3DCreate9(D3D_SDK_VERSION);
     D3DPRESENT_PARAMETERS pp{};
     pp.Windowed = TRUE;

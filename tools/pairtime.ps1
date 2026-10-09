@@ -14,7 +14,7 @@ for ($r = 0; $r -lt $Runs; $r++) {
         foreach ($d in $Dlls -split ',') {
             Copy-Item (Join-Path (Split-Path $b) $d) "$w\d3d9.dll" -Force
             Set-Content "$w\mhfz-fps.ini" "[fps]`r`nmode=2`r`ntarget_fps=170`r`npresent_interval=0`r`nstats_interval=2`r`nselfcheck=0`r`nretro=0`r`n"
-            Start-Process "$w\testapp.exe" -ArgumentList ($all[$s] -split ' ') -WorkingDirectory $w -Wait
+            Start-Process -NoNewWindow "$w\testapp.exe" -ArgumentList ($all[$s] -split ' ') -WorkingDirectory $w -Wait
             $v = @(Get-Content "$w\mhfz-fps.log" | ForEach-Object { if ($_ -match 'stats [\d.]+s: .* pair ([\d.]+) ms') { [double]$Matches[1] } })
             if ($v.Count -gt 1) { $v = $v[1..($v.Count - 1)] }  # (the first interval includes the warm-up)
             $k = "$s|$d"

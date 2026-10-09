@@ -32,7 +32,7 @@ $scenes = [ordered]@{ plain = "5"; billboards = "5 1"; swap = "5 0 1"; tag = "5 
 foreach ($s in $scenes.Keys) {
     if ($Only -and ($Only -split ',') -notcontains $s) { continue }
     Set-Content "$work\mhfz-fps.ini" ("[fps]`r`nmode=2`r`ntarget_fps=120`r`npresent_interval=0`r`nstats_interval=0`r`nselfcheck=0`r`nretro=0`r`ndebug_pairhash=1`r`n" + ($Ini -replace ';', "`r`n") + "`r`n")
-    Start-Process "$work\testapp.exe" -ArgumentList ($scenes[$s] -split ' ') -WorkingDirectory $work -Wait
+    Start-Process -NoNewWindow "$work\testapp.exe" -ArgumentList ($scenes[$s] -split ' ') -WorkingDirectory $work -Wait
     Get-Content "$work\mhfz-fps.log" | Where-Object { $_ -match 'pairhash (\d+) (\w+) (\d+)' } | ForEach-Object { "$($Matches[1]) $($Matches[2]) $($Matches[3])" } |
         Set-Content "$Out\$s.txt"
     "{0,-10} {1} ticks" -f $s, (Get-Content "$Out\$s.txt").Count

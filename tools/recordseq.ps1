@@ -10,7 +10,7 @@ New-Item -ItemType Directory -Force $w | Out-Null
 Copy-Item "$b\testapp.exe" $w -Force
 Copy-Item $(if ($Dll) { $Dll } else { "$b\d3d9.dll" }) "$w\d3d9.dll" -Force
 Set-Content "$w\mhfz-fps.ini" ("[fps]`r`nmode=2`r`ntarget_fps=120`r`npresent_interval=0`r`nstats_interval=0`r`nretro=1`r`nretro_ticks=16`r`nretro_autosave=$AtSec`r`n" + ($Ini -replace ';', "`r`n") + "`r`n")
-Start-Process "$w\testapp.exe" -ArgumentList ($Scene -split ' ') -WorkingDirectory $w -Wait
+Start-Process -NoNewWindow "$w\testapp.exe" -ArgumentList ($Scene -split ' ') -WorkingDirectory $w -Wait
 $seq = Get-ChildItem "$w\retro" -Recurse -Filter ticks.seq -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $seq) { "no ticks.seq written (see $w\mhfz-fps.log)"; return }
 New-Item -ItemType Directory -Force $Out | Out-Null

@@ -4,6 +4,7 @@
 // Exit code 0 and "overlay calls: N" > 0 = fine.
 #include <windows.h>
 #include <d3d9.h>
+#include "quietwin.h"
 #include <cstdio>
 
 typedef HRESULT(WINAPI* Present_t)(IDirect3DDevice9*, const RECT*, const RECT*, HWND, const RGNDATA*);
@@ -20,7 +21,7 @@ int main() {
     wc.hInstance = GetModuleHandleA(nullptr);
     wc.lpszClassName = "overlaytest";
     RegisterClassA(&wc);
-    HWND w = CreateWindowA("overlaytest", "overlaytest", WS_OVERLAPPEDWINDOW | WS_VISIBLE, 0, 0, 320, 240, nullptr, nullptr, wc.hInstance, nullptr);
+    HWND w = QuietWindow("overlaytest", "overlaytest", 320, 240, wc.hInstance);
     IDirect3D9* d3d = Direct3DCreate9(D3D_SDK_VERSION);
     D3DPRESENT_PARAMETERS pp = {};
     pp.Windowed = TRUE;

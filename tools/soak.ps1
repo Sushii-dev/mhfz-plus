@@ -7,7 +7,7 @@ New-Item -ItemType Directory -Force $w | Out-Null
 Copy-Item "$b\testapp.exe" $w -Force
 Copy-Item $(if ($Dll) { $Dll } else { "$b\d3d9.dll" }) "$w\d3d9.dll" -Force
 Set-Content "$w\mhfz-fps.ini" ("[fps]`r`nmode=2`r`ntarget_fps=0`r`npresent_interval=0`r`nstats_interval=60`r`n" + ($Ini -replace ';', "`r`n") + "`r`n")
-$p = Start-Process "$w\testapp.exe" -ArgumentList (@("$Seconds") + ($Scene -split ' ')) -WorkingDirectory $w -PassThru -RedirectStandardOutput "$w\out.txt"
+$p = Start-Process -NoNewWindow "$w\testapp.exe" -ArgumentList (@("$Seconds") + ($Scene -split ' ')) -WorkingDirectory $w -PassThru -RedirectStandardOutput "$w\out.txt"
 $peak = 0
 while (-not $p.WaitForExit(15000)) {
     try { $p.Refresh(); $peak = [Math]::Max($peak, $p.PrivateMemorySize64 / 1MB) } catch {}

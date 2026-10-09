@@ -6,7 +6,8 @@
 extern "C" {
 void* g_real[32];
 HMODULE g_realD3D9 = nullptr;
-char g_d3d9Backend[MAX_PATH];  // full path, set by fps.cpp before the first Direct3DCreate9 (empty: Windows' own)
+char g_d3d9Backend[MAX_PATH];  // full path (UTF-8, for the log), set by fps.cpp before the first Direct3DCreate9 (empty: Windows' own)
+wchar_t g_d3d9BackendW[MAX_PATH];  // the same path as Unicode: what is loaded (a user name with ø, é... in it works)
 }
 static HMODULE g_sysD3D9;
 
@@ -35,10 +36,20 @@ static void* Export(HMODULE m, int i) {
 
 extern "C" void LoadRealD3D9() {
     if (g_realD3D9) return;
-    if (g_d3d9Backend[0]) g_realD3D9 = LoadLibraryA(g_d3d9Backend);
+    if (g_d3d9BackendW[0]) g_realD3D9 = LoadLibraryW(g_d3d9BackendW);
     if (!g_realD3D9) g_realD3D9 = SystemD3D9();
     if (!g_realD3D9) return;
     for (int i = 0; i < 23; i++) g_real[i] = Export(g_realD3D9, i);
+}
+
+// The backend loaded but couldn't start (DXVK without a Vulkan 1.3 driver returns no Direct3D object): Windows' own
+// from now on.
+extern "C" bool UseSystemD3D9() {
+    HMODULE sys = SystemD3D9();
+    if (!sys || sys == g_realD3D9) return false;
+    g_realD3D9 = sys;
+    for (int i = 0; i < 23; i++) g_real[i] = Export(sys, i);
+    return true;
 }
 
 // Each stub loads the real d3d9 on first use and tail-jumps to the real export (one the backend lacks: Windows'

@@ -4,7 +4,7 @@ $ErrorActionPreference = "Stop"
 $b = Join-Path (Split-Path $PSScriptRoot) "build"
 Add-Type -Namespace W -Name U -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr h, int c);'
 Set-Content "$b\mhfz-fps.ini" "[fps]`r`nmode=2`r`ntarget_fps=120`r`npresent_interval=0`r`nstats_interval=2`r`nselfcheck=0`r`nretro=0`r`n"
-$p = Start-Process "$b\testapp.exe" -ArgumentList '11' -WorkingDirectory $b -PassThru
+$p = Start-Process -NoNewWindow "$b\testapp.exe" -ArgumentList '11' -WorkingDirectory $b -PassThru
 Start-Sleep -Milliseconds 3000
 $p.Refresh()
 [void][W.U]::ShowWindow($p.MainWindowHandle, 6)   # SW_MINIMIZE

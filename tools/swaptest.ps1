@@ -11,7 +11,7 @@ $ini = Join-Path $b "mhfz-fps.ini"
 $base = "[fps]`r`nmode=2`r`ntarget_fps=$env:REG_TARGET`r`nstats_interval=2`r`nselfcheck=0`r`nretro=1`r`n"
 Set-Content $ini ($base + "retro_trigger=0`r`n") -NoNewline
 Remove-Item (Join-Path $b "mhfz-fps.log") -ErrorAction SilentlyContinue
-$p = Start-Process -FilePath (Join-Path $b "testapp.exe") -ArgumentList "7", "0", "1" -WorkingDirectory $b -PassThru
+$p = Start-Process -NoNewWindow -FilePath (Join-Path $b "testapp.exe") -ArgumentList "7", "0", "1" -WorkingDirectory $b -PassThru
 Start-Sleep -Milliseconds 2500
 Set-Content $ini ($base + "retro_trigger=1`r`n") -NoNewline
 $p.WaitForExit()

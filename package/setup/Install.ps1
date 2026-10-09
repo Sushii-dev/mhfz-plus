@@ -4,7 +4,7 @@
 #   -Test                  for testing: no registry entry, no shortcuts, Steam only with -SteamConfig folders
 param([switch]$Unattended, [switch]$Test, [string]$MezeDir = '', [string]$RainDir = '', [string]$Target = '',
       [string]$KitDir = '',   # an earlier English kit (MHFZ-Meze-translation) whose backups can be reused
-      [string[]]$SteamConfig = @(), [switch]$Steam, [switch]$NoEnglish, [switch]$NoFps,
+      [string[]]$SteamConfig = @(), [switch]$Steam, [switch]$NoEnglish, [switch]$NoFps, [switch]$NoDxvk,
       [string]$Screenshot = '')                            # testing: draw the window into this PNG and exit
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
@@ -84,11 +84,30 @@ function Write-Ini($path, $ini) {
 }
 
 # ------------------------------------------------------------------------------------------------ install
+# d3d9_backend in a mhfz-fps.ini: only an empty value or an MHFZ Plus DXVK path is replaced; comments and the rest stay.
+function Set-Backend($path, $value) {
+    $lines = [Collections.Generic.List[string]]([IO.File]::ReadAllLines($path))
+    $i = -1
+    for ($k = 0; $k -lt $lines.Count; $k++) { if ($lines[$k] -match '^\s*d3d9_backend\s*=') { $i = $k; break } }
+    if ($i -ge 0) {
+        $cur = ($lines[$i] -split '=', 2)[1].Trim()
+        if ($cur -and $cur -notmatch 'MHFZ-Plus\\fps\\dxvk\\d3d9\.dll$' -and $cur -notmatch '\\fps\\dxvk\\d3d9\.dll$') { return }   # (chosen by hand)
+        $lines[$i] = "d3d9_backend=$value"
+    } elseif ($value) {
+        $s = -1; for ($k = 0; $k -lt $lines.Count; $k++) { if ($lines[$k].Trim() -eq '[fps]') { $s = $k; break } }
+        if ($s -lt 0) { return }
+        $e = $s + 1; while ($e -lt $lines.Count -and -not $lines[$e].TrimStart().StartsWith('[')) { $e++ }
+        while ($e -gt $s + 1 -and -not $lines[$e - 1].Trim()) { $e-- }
+        $lines.Insert($e, "d3d9_backend=$value")
+    } else { return }
+    [IO.File]::WriteAllText($path, ($lines -join "`r`n") + "`r`n", (New-Object Text.UTF8Encoding $false))
+}
 $names = @{ meze = 'MHF-Z MezeLounge (Plus)'; rain = 'MHF-Z Rain (Plus)' }
 function Install-Plus($o) {
     $dst = $o.Target
-    if (Get-Process -Name 'MHFZ-Plus' -ErrorAction SilentlyContinue) { throw 'MHFZ Plus is running. Close the game first.' }
-    if (Get-Process -Name 'MHFZ-Plus-Settings' -ErrorAction SilentlyContinue) { throw 'The MHFZ Plus settings window is open. Close it first.' }
+    # (a real install only: -Test installs into its own folder for the simulated games, whatever is running)
+    if (-not $Test -and (Get-Process -Name 'MHFZ-Plus' -ErrorAction SilentlyContinue)) { throw 'MHFZ Plus is running. Close the game first.' }
+    if (-not $Test -and (Get-Process -Name 'MHFZ-Plus-Settings' -ErrorAction SilentlyContinue)) { throw 'The MHFZ Plus settings window is open. Close it first.' }
     New-Item -ItemType Directory -Force $dst | Out-Null
     Copy-Item (Join-Path $pkg 'payload\*') $dst -Recurse -Force
     Copy-Item (Join-Path $PSScriptRoot 'SteamShortcuts.ps1'), (Join-Path $PSScriptRoot 'Uninstall.ps1') $dst -Force
@@ -110,6 +129,15 @@ function Install-Plus($o) {
         if (-not $ini[$s].Contains('fps_mode')) { $ini[$s]['fps_mode'] = if ($s -eq 'meze') { 'stay' } else { 'swap' } }
     }
     Write-Ini $iniPath $ini
+
+    # graphics backend: the DXVK that comes with MHFZ Plus (much less CPU time per frame), or Windows' own. Set in the
+    # default settings (new games start from it) and in each game's own settings; a backend someone chose by hand stays.
+    $dxvk = Join-Path $dst 'fps\dxvk\d3d9.dll'
+    if ($o.Fps -and (Test-Path $dxvk)) {
+        $files = @((Join-Path $dst 'fps\mhfz-fps.ini'), (Join-Path $dst 'fps-state\rain\mhfz-fps.ini'))
+        if ($o.Meze) { $files += Join-Path $o.MezeDir 'mhfz-fps.ini' }
+        foreach ($f in $files) { if (Test-Path $f) { Set-Backend $f $(if ($o.Dxvk) { $dxvk } else { '' }) } }
+    }
 
     # originals saved by the earlier English kit (MHFZ-Meze-translation): reused when they match the patch
     $kitDirs = @{ meze = 'backup'; rain = 'backup-rain' }
@@ -234,7 +262,7 @@ $prevVersion = if (Test-Path (Join-Path $defaultTarget 'MHFZ-Plus.exe')) { $v = 
 if ($Unattended) {
     $r = Install-Plus ([pscustomobject]@{ Target = $defaultTarget; Meze = [bool](Test-MezeDir $mezeFound); MezeDir = $mezeFound;
                                           Rain = [bool](Test-RainDir $rainFound); RainDir = $rainFound; English = $hasEnglish -and -not $NoEnglish;
-                                          Fps = -not $NoFps; Desktop = -not $Test; Steam = [bool]$Steam })
+                                          Fps = -not $NoFps; Desktop = -not $Test; Steam = [bool]$Steam; Dxvk = -not $NoDxvk })
     $r
     return
 }
@@ -285,6 +313,9 @@ $cFps = Add-Check 'High frame rate (up to your monitor''s refresh rate; game spe
 $cEng = Add-Check ('English translation' + $(if (-not $hasEnglish) { ' - not included in this download' } else { '' })) 24 $y $hasEnglish; $y += 24
 $cEng.Enabled = $hasEnglish
 $cDesk = Add-Check 'Desktop shortcuts' 24 $y $true; $y += 24
+$hasDxvk = Test-Path (Join-Path $pkg 'payload\fps\dxvk\d3d9.dll')
+$cDxvk = Add-Check 'Use DXVK: faster (needs a Vulkan graphics card; otherwise Windows Direct3D is used)' 24 $y $hasDxvk; $y += 24
+$cDxvk.Enabled = $hasDxvk
 $steamOk = [bool](Get-SteamUserConfigDirs)
 $cSteam = Add-Check ('Add to Steam (as non-Steam games)' + $(if (-not $steamOk) { ' - Steam not found' } else { '' })) 24 $y $steamOk; $y += 24
 $cSteam.Enabled = $steamOk
@@ -308,7 +339,7 @@ $ok.Add_Click({
         $form.Cursor = 'WaitCursor'
         $ok.Enabled = $false
         $r = Install-Plus ([pscustomobject]@{ Target = $tTarget.Text; Meze = $cMeze.Checked; MezeDir = $tMeze.Text; Rain = $cRain.Checked;
-                                              RainDir = $tRain.Text; English = $cEng.Checked; Fps = $cFps.Checked; Desktop = $cDesk.Checked;
+                                              RainDir = $tRain.Text; English = $cEng.Checked; Fps = $cFps.Checked; Desktop = $cDesk.Checked; Dxvk = $cDxvk.Checked;
                                               Steam = $cSteam.Checked })
         $form.Cursor = 'Default'
         $msg = "MHFZ Plus is installed.`n`n$($r -join "`n")`n`nFrom now on, start the game with the MHFZ Plus shortcuts (or from Steam) instead of the usual launcher."

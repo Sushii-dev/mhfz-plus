@@ -15,8 +15,8 @@ if (-not $Quiet) {
     $r = [System.Windows.Forms.MessageBox]::Show("Remove MHFZ Plus?`n`nYour original game files are put back first.", $title, 'YesNo', 'Question')
     if ($r -ne 'Yes') { exit 0 }
 }
-if (Get-Process -Name 'MHFZ-Plus' -ErrorAction SilentlyContinue) { Say 'MHFZ Plus is still running. Close the game first, then try again.' 'Warning'; exit 1 }
-if (Get-Process -Name 'MHFZ-Plus-Settings' -ErrorAction SilentlyContinue) { Say 'The MHFZ Plus settings window is open. Close it first, then try again.' 'Warning'; exit 1 }
+if (-not $Test -and (Get-Process -Name 'MHFZ-Plus' -ErrorAction SilentlyContinue)) { Say 'MHFZ Plus is still running. Close the game first, then try again.' 'Warning'; exit 1 }
+if (-not $Test -and (Get-Process -Name 'MHFZ-Plus-Settings' -ErrorAction SilentlyContinue)) { Say 'The MHFZ Plus settings window is open. Close it first, then try again.' 'Warning'; exit 1 }
 
 # 1. originals back, mod out (refuses while a game is running)
 $p = Start-Process $exe -ArgumentList 'all', '--restore' -Wait -PassThru

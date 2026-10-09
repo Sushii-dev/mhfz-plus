@@ -5,6 +5,7 @@
 #define DIRECTINPUT_VERSION 0x0800
 #include <windows.h>
 #include <d3d9.h>
+#include "quietwin.h"
 #include <dinput.h>
 #include <cstdio>
 #include <cstdlib>
@@ -45,7 +46,7 @@ int main(int argc, char** argv) {
     wc.hInstance = GetModuleHandleA(nullptr);
     wc.lpszClassName = "mhfzinputtest";
     RegisterClassA(&wc);
-    HWND hw = CreateWindowA("mhfzinputtest", "mhfz-fps input test", WS_OVERLAPPEDWINDOW | WS_VISIBLE, 100, 100, 640, 480, 0, 0, wc.hInstance, 0);
+    HWND hw = QuietWindow("mhfzinputtest", "mhfz-fps input test", 640, 480, wc.hInstance);
     IDirect3D9* d3d = Direct3DCreate9(D3D_SDK_VERSION);
     D3DPRESENT_PARAMETERS pp{};
     pp.Windowed = TRUE;

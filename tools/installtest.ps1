@@ -36,7 +36,9 @@ $o = @(Ours)
 Check ($o.Count -eq 2) "2 Steam entries ($($o.Count))"
 $ids = $o | ForEach-Object { $_['appid'] }
 
-"=== reinstall into another folder"
+$dxvkIni = Get-Content "$s\Plüs A\fps\mhfz-fps.ini" -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { $_ -match '^d3d9_backend=' }
+Check ((Test-Path "$s\Plüs A\fps\dxvk\d3d9.dll") -and (Test-Path "$s\Plüs A\fps\dxvk\LICENSE.txt")) 'DXVK and its license installed'
+Check ($dxvkIni -match '^d3d9_backend=.*\\Plüs A\\fps\\dxvk\\d3d9\.dll$') "settings use the bundled DXVK ($dxvkIni)""=== reinstall into another folder"
 $r = powershell -NoProfile -ExecutionPolicy Bypass -File $setup -Unattended -Test -MezeDir "$sim\meze" -RainDir "$sim\rain" -Target "$s\Plüs B" -SteamConfig "$s\steamcfg" -Steam 2>&1
 $o = @(Ours)
 Check ($o.Count -eq 2) "still 2 Steam entries ($($o.Count))"

@@ -12,7 +12,7 @@ foreach ($b in ($Builds -split ',')) {
     Copy-Item "$root\build\testapp.exe" $w
     Copy-Item (Join-Path $root $dll) "$w\d3d9.dll"
     Set-Content "$w\mhfz-fps.ini" ("[fps]`r`n" + ($Ini -replace ';', "`r`n") + "`r`nmode=2`r`ntarget_fps=120`r`npresent_interval=0`r`nstats_interval=1`r`ncapture_at_start=24`r`n")
-    Start-Process "$w\testapp.exe" -ArgumentList ($Scene -split ' ') -WorkingDirectory $w -Wait
+    Start-Process -NoNewWindow "$w\testapp.exe" -ArgumentList ($Scene -split ' ') -WorkingDirectory $w -Wait
     python -c @"
 from PIL import Image
 import glob

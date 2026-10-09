@@ -12,7 +12,7 @@ foreach ($d in $list) {
     for ($r = 0; $r -lt $Runs; $r++) {
         Copy-Item $d "$w\d3d9.dll" -Force
         Set-Content "$w\mhfz-fps.ini" "[fps]`r`nmode=2`r`ntarget_fps=170`r`npresent_interval=0`r`nstats_interval=2`r`nselfcheck=0`r`nretro=0`r`n"
-        Start-Process "$w\testapp.exe" -ArgumentList (@("$Seconds") + @('0') * 8 + @('1')) -WorkingDirectory $w -Wait
+        Start-Process -NoNewWindow "$w\testapp.exe" -ArgumentList (@("$Seconds") + @('0') * 8 + @('1')) -WorkingDirectory $w -Wait
         $lines = Get-Content "$w\mhfz-fps.log"
         $k = 0
         foreach ($l in $lines) {

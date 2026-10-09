@@ -21,7 +21,7 @@ foreach ($k in $sets.Keys) {
     $line = "{0,-13}" -f $k
     foreach ($s in $scenes) {
         Set-Content "$w\mhfz-fps.ini" ("[fps]`r`nmode=2`r`ntarget_fps=144`r`npresent_interval=0`r`nstats_interval=1`r`n" + ($sets[$k] -replace ';', "`r`n") + "`r`n")
-        $p = Start-Process "$w\testapp.exe" -ArgumentList ($s -split ' ') -WorkingDirectory $w -PassThru -RedirectStandardOutput "$w\out.txt"
+        $p = Start-Process -NoNewWindow "$w\testapp.exe" -ArgumentList ($s -split ' ') -WorkingDirectory $w -PassThru -RedirectStandardOutput "$w\out.txt"
         if (-not $p.WaitForExit(30000)) {
             $keep = Join-Path $b ("hang-" + (Get-Date -Format HHmmss) + "-$k.log")
             Copy-Item "$w\mhfz-fps.log" $keep -ErrorAction SilentlyContinue

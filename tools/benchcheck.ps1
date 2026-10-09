@@ -7,7 +7,7 @@ $caps = Join-Path $b "paircap"
 if (Test-Path $caps) { Get-ChildItem $caps -Filter *.bin | ForEach-Object { [IO.File]::Delete($_.FullName) } }
 $base = "[fps]`r`nmode=2`r`ntarget_fps=170`r`npresent_interval=0`r`nstats_interval=0`r`nselfcheck=0`r`nretro=0`r`ndebug_pairhash=1`r`n"
 Set-Content "$b\mhfz-fps.ini" ($base + "paircap_trigger=0`r`n")
-$p = Start-Process "$b\testapp.exe" -ArgumentList '12', '0', '0', '0', '0', '0', '0', '0', '0', '1' -WorkingDirectory $b -PassThru
+$p = Start-Process -NoNewWindow "$b\testapp.exe" -ArgumentList '12', '0', '0', '0', '0', '0', '0', '0', '0', '1' -WorkingDirectory $b -PassThru
 Start-Sleep 3
 Set-Content "$b\mhfz-fps.ini" ($base + "paircap_trigger=1`r`n")
 $p.WaitForExit()
