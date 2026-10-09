@@ -147,6 +147,7 @@ struct Config {
     int camprobe_s = 6;             // how long the camera probe watches
     int camprobe_test = 0;          // testing: the probe watches a variable of the mod's own instead of the game's camera
     int camprobe_trigger = 0;       // changing it while the game runs starts the camera probe (like the key)
+    int debug_lost_at = 0;          // testing: the Nth in-between Present reports "device lost" once (it must not stop the mod)
 } C;
 
 static FILE* g_log;
@@ -481,6 +482,7 @@ static void LoadConfig() {
     C.camprobe_s = std::clamp(I("camprobe_s", C.camprobe_s), 1, 60);
     C.camprobe_test = I("camprobe_test", C.camprobe_test);
     C.camprobe_trigger = I("camprobe_trigger", C.camprobe_trigger);
+    C.debug_lost_at = I("debug_lost_at", C.debug_lost_at);
     C.carry_restore = I("carry_restore", C.carry_restore);
     C.late_slot = I("late_slot", C.late_slot);
     C.pacing = I("pacing", C.pacing);
@@ -608,7 +610,8 @@ static struct {
     uint64_t gpuWaitCut;  // waits for the GPU cut short at the deadline
     double ltHeldMs;      // latency_trim: holds after the real frame
     uint64_t ltTicks;
-    uint64_t inputLatched, inputSamples;  // input_latch: taps handed to the game's next read; device reads while it slept
+    uint64_t inputLatched, inputSamples;
+    uint64_t lostReports, lostResumes;  // Presents that said "device lost"; times the in-between frames came back without a Reset  // input_latch: taps handed to the game's next read; device reads while it slept
     double phaseMs[16];  // BuildPairs phases (see kPhase)
     uint64_t replayN, tickN;
     uint64_t ops[64];
@@ -1005,6 +1008,7 @@ HOOKDECL(HRESULT, Present, const RECT* s, const RECT* dr, HWND w, const RGNDATA*
 HOOKDECL(HRESULT, Reset, D3DPRESENT_PARAMETERS* pp);
 HOOKDECL(HRESULT, EndScene);
 static void PairJobStart();
+static void NoteLost(const char* whose);
 // An overlay that hooks the device vtable after us keeps our hook as "its original". When CheckHooks then puts our
 // hook back on top, o_Present is the overlay's and the two would call each other until the stack overflows. A hook
 // that is re-entered like that goes straight to the runtime's function (recorded at the first hook) instead.
@@ -5402,7 +5406,13 @@ static void PairJoin() {
 }
 static int g_selfcheckDue;  // (the self-check pairs differently: no background job then)
 static int g_pcLeft;  // (pairing captures still to save: PairCapSave)
-static void PairJobStart() {
+// A Present said "device lost": no matching and no in-between frames until the device answers again - a Reset, or the
+// game's own next Present going through (see PresentBody). Logged the first time it happens each time.
+static void NoteLost(const char* whose) {
+    St.lostReports++;
+    if (!g_lost) Log("%s Present said the device is lost - in-between frames paused until it answers again", whose);
+    g_lost = true;
+}static void PairJobStart() {
     PairJoin();
     if (!C.pair_async || !g_defer || C.mode != 2 || !C.enabled || g_lost || g_trState == 2 || g_selfcheckDue || g_pcLeft > 0) return;
     const Frame& N = g_fr[g_cur];
@@ -9711,6 +9721,7 @@ static void Interp(DWORD ms, int64_t sleepAt) {
         NotePresent();
         g_heartbeat = Qpc();
         HRESULT hr = o_Present(g_dev, g_hasSrc ? &g_src : nullptr, g_hasDst ? &g_dst : nullptr, g_presentWnd, nullptr);
+        if (C.debug_lost_at && St.replayN + 1 == (uint64_t)C.debug_lost_at) hr = D3DERR_DEVICELOST;  // (testing)
         InputSample();
         if (C.gpu_queue && g_frameQ[extra % 2]) { g_frameQ[extra % 2]->Issue(D3DISSUE_END); g_frameQIssued[extra % 2] = true; }
         int64_t r2 = Qpc();
@@ -9720,7 +9731,11 @@ static void Interp(DWORD ms, int64_t sleepAt) {
         St.presentMs += Ms(r2 - r1);
         St.replayN++;
         extra++;
-        if (FAILED(hr)) { if (hr == D3DERR_DEVICELOST) g_lost = true; break; }
+        if (FAILED(hr)) {
+            if (hr == D3DERR_DEVICELOST) NoteLost("an in-between frame's");
+            else if (St.replayN < 20 || (St.replayN % 1000) == 0) Log("in-between Present failed: %08lx", (unsigned long)hr);
+            break;
+        }
     }
     // a cost estimate that blocks every replay would never be refreshed; let it recover
     if (extra == 0 && costLimited) { g_replayCost *= 0.85; g_gpuTail *= 0.85; }
@@ -10229,6 +10244,9 @@ static void Stats(int64_t now) {
         St.unpairedPos / sl, (unsigned long long)St.cuts, (unsigned long long)St.foreign, (unsigned long long)St.sbCreate,
         (unsigned long long)St.sbBegin, (unsigned long long)St.sbCapture, (unsigned long long)St.sbApply,
         (unsigned long long)St.updates, (unsigned long long)St.rtData);
+    if (St.lostReports)
+        Log("device lost: %llu Present(s) said so, the in-between frames resumed %llu time(s) without a Reset", (unsigned long long)St.lostReports,
+            (unsigned long long)St.lostResumes);
     if (C.input_latch || St.inputLatched)
         Log("input_latch: %llu quick presses handed to the game, %llu device reads while it slept (%d devices)",
             (unsigned long long)St.inputLatched, (unsigned long long)St.inputSamples, g_ldN);
@@ -10316,7 +10334,14 @@ static HRESULT PresentBody(Dev* d, const RECT* s, const RECT* dr, HWND w, const 
     NotePresent();
     g_heartbeat = Qpc();
     HRESULT hr = o_Present(d, s, dr, w, rg);
-    if (hr == D3DERR_DEVICELOST) g_lost = true;
+    if (hr == D3DERR_DEVICELOST) NoteLost("the game's");
+    else if (g_lost && SUCCEEDED(hr)) {
+        // the game's own frame went out: the device isn't lost. (DXVK can say "lost" for a moment - at start-up, while it
+        // sets up the display - and a windowed game never resets, so waiting for a Reset kept the mod off all session.)
+        g_lost = false;
+        St.lostResumes++;
+        Log("device answers again - in-between frames resume");
+    }
     g_lastReal = t;
     if (g_capFlush) { FlushCaptures(true); g_lastReal = Qpc(); }
     if (f.valid && !f.draws.empty()) g_cur = (g_cur + 1) % 3;
