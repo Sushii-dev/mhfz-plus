@@ -22,8 +22,11 @@ if (-not (Test-Path (Join-Path $pkg 'payload\MHFZ-Plus.exe'))) {
 }
 
 # ------------------------------------------------------------------------------------------------ detection
-function Test-MezeDir($d) { $d -and (Test-Path (Join-Path $d 'mhf.exe')) -and (Test-Path (Join-Path $d 'dat')) }
-function Test-RainDir($d) { $d -and (Test-Path (Join-Path $d 'Client\dat')) -and (Test-Path (Join-Path $d 'Launcher')) }
+# (folders that may not exist, on drives that may not exist: Join-Path throws for a drive letter the PC doesn't have -
+# no D: drive stopped setup before its window opened - so plain strings, and never an error from looking)
+function Test-Sub($d, $rel) { try { Test-Path -LiteralPath ([IO.Path]::Combine($d, $rel)) } catch { $false } }
+function Test-MezeDir($d) { $d -and (Test-Sub $d 'mhf.exe') -and (Test-Sub $d 'dat') }
+function Test-RainDir($d) { $d -and (Test-Sub $d 'Client\dat') -and (Test-Sub $d 'Launcher') }
 function Find-MezeDir {
     $cands = @('C:\Games\MezeLounge', 'C:\MezeLounge', 'C:\Games\MezeLounge', 'D:\MezeLounge', 'D:\Games\MezeLounge',
                "$env:ProgramFiles\MezeLounge", "${env:ProgramFiles(x86)}\MezeLounge", "$env:USERPROFILE\MezeLounge",
@@ -255,8 +258,8 @@ $defaultTarget = if ($Target) { $Target } else { Join-Path $env:LOCALAPPDATA 'MH
 # (the public GitHub release has no English data: the option is shown as not included)
 $hasEnglish = Test-Path (Join-Path $pkg 'payload\english\meze\manifest.txt')
 $prevIni = Read-Ini (Join-Path $defaultTarget 'MHFZ-Plus.ini')
-$mezeFound = if ($MezeDir) { $MezeDir } elseif ($prevIni.Contains('meze')) { $prevIni['meze']['game'] } else { Find-MezeDir }
-$rainFound = if ($RainDir) { $RainDir } elseif ($prevIni.Contains('rain')) { Split-Path $prevIni['rain']['game'] } else { Find-RainDir }
+$mezeFound = if ($MezeDir) { $MezeDir } elseif ($prevIni.Contains('meze')) { $prevIni['meze']['game'] } else { try { Find-MezeDir } catch { '' } }
+$rainFound = if ($RainDir) { $RainDir } elseif ($prevIni.Contains('rain')) { Split-Path $prevIni['rain']['game'] } else { try { Find-RainDir } catch { '' } }
 $prevVersion = if (Test-Path (Join-Path $defaultTarget 'MHFZ-Plus.exe')) { $v = Get-Content (Join-Path $defaultTarget 'version.txt') -ErrorAction SilentlyContinue | Select-Object -First 1; if ($v) { $v } else { 'earlier' } } else { '' }
 
 if ($Unattended) {

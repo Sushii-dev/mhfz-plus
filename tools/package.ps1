@@ -2,7 +2,7 @@
 #   Install.cmd, README.txt, setup\*.ps1, payload\(MHFZ-Plus.exe, MHFZ-Plus-Settings.exe, version.txt, fps\, english\)
 # Usage: tools\package.ps1 [-NoBuild] [-Public]
 #   -Public   the GitHub release: no English data (derived from the game's text) -> dist\public\MHFZ-Plus-<version>.zip
-param([switch]$NoBuild, [string]$Version = "1.3", [switch]$Public)
+param([switch]$NoBuild, [string]$Version = "1.3.1", [switch]$Public)
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot
 if (-not $NoBuild) {
