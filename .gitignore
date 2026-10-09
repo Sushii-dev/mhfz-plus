@@ -1,0 +1,38 @@
+# build output and packages
+build/
+dist/
+*.exe
+*.dll
+*.map
+*.res
+*.ico
+*.obj
+*.o
+
+# never commit game files, game data or anything derived from them
+dist-work/
+sim/
+captures/
+ghidra/
+third_party/
+*.bin
+*.dat
+retro/
+retro-*/
+trace/
+selfcheck*/
+*.seq
+
+# logs and local settings
+*.log
+mhfz-fps.ini
+!package/fps/mhfz-fps.ini
+MHFZ-Plus.ini
+
+# private notes
+CONTEXT.md
+MORNING-REPORT.md
+NOTES.md
+
+# local audit patterns (tools\mkrepo.ps1)
+audit-private.txt
