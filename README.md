@@ -9,6 +9,21 @@ adding input latency. An optional launcher can also apply an English translation
 > **Made with AI.** Sushii-dev researched, designed, directed and tested the project; an AI coding agent
 > (Anthropic's Claude) wrote most of the code and documentation under that direction. Details: [AI usage](docs/AI-USAGE.md).
 
+## Rain players: please read first
+
+MHFZ Plus is **not yet approved by Rain's staff**. A Rain staff member has asked players not to use mods that work
+around the anti-cheat until staff have given a green light, and said that anyone who does so is at their own risk.
+
+To be precise about MHFZ Plus: the frame-rate mod doesn't touch the game's anti-cheat. It doesn't patch game code or
+write game memory, and it only changes what's drawn on your screen. But on Rain, the MHFZ Plus launcher puts the mod
+(and the English files, if chosen) in after Rain's launcher has checked the game files. That steps around Rain's file
+check, so we consider it covered by the staff's request.
+
+We've contacted Rain's staff and will follow their decision, including removing Rain support if they ask. Until then,
+please don't use MHFZ Plus on Rain unless you accept that risk. MezeLounge is not affected.
+
+Rain's own mod policy: community mods are unsupported, are likely to stop working with the new client, and are used at
+your own discretion.
 ## What it does
 
 MHF-Z runs its game logic at 30 ticks per second and draws one frame per tick. MHFZ Plus keeps that exactly: the game
