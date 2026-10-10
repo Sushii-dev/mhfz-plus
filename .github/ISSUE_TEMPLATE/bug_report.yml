@@ -1,0 +1,53 @@
+name: Bug report
+description: Something looks wrong, runs badly, or doesn't start
+title: "Bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **The easy way:** open MHFZ Plus, then Help > **Make a bug report**. It opens this page with your setup already filled in and shows you the report zip: write what happened and drag the zip into **Files**. Done.
+
+        Saw a glitch (flicker, garbage on screen)? Press **Delete** in game right after it. That saves a clip of the last second, and the bug report adds it.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you saw or what went wrong, where (town, quest, menu, a crowd, a cutscene...) and how often. Screenshots or a video are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Files
+      description: Drag the report zip here (and the clip zip, if there is one). A file over 25 MB? Upload it to Google Drive or similar and paste the link.
+  - type: textarea
+    id: setup
+    attributes:
+      label: Your setup
+      description: "Filled in by MHFZ Plus's bug report. Otherwise: the MHFZ Plus version, Rain or MezeLounge, Windows or Linux, CPU, graphics card and refresh rate."
+    validations:
+      required: true
+  - type: dropdown
+    id: modoff
+    attributes:
+      label: Does it also happen with the frame-rate mod off? (optional)
+      description: The Pause key turns the frame-rate mod off and on in game.
+      options:
+        - "No: only with the mod on"
+        - "Yes: also with the mod off"
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Does it also happen with Windows' Direct3D 9 instead of DXVK? (optional)
+      description: MHFZ Plus > Settings > General > Graphics backend, then start the game again.
+      options:
+        - "No: only with DXVK"
+        - "Yes: also with Windows' Direct3D 9"
+        - I don't use DXVK
+  - type: markdown
+    attributes:
+      value: |
+        No GitHub account, or rather not post your logs in public? Send the zip to Sushii on Discord instead.
+
+        MHFZ Plus 1.3 has no bug report button yet: Start menu > MHFZ Plus > "MHFZ Plus folder (settings and logs)", put its `.log` files and `MHFZ-Plus.ini` in a zip and drag that into Files.
