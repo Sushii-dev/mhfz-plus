@@ -388,6 +388,21 @@ in town.
   joyGetPosEx or XInput) / 1 / 0. Not when the app itself runs under Steam (SteamGameId set) or Wine.
 - The session is "asked of Steam" until MHFZ-Plus.exe runs AND its log is newer than the ask (the launcher rotates
   the log at start; the old one would read as "game closed"); 2 min without: "Start without Steam" toast.
+
+### 2026-10-11: an update stopped by a file in use
+
+- A player's Update now 1.4.3 -> 1.4.4: "The process cannot access the file ...\MHFZ-Plus-App.exe because it is
+  being used by another process". The app had closed (setup waits for it), but something still had its exe open
+  for a moment - not known which: maybe Steam (when the app runs as its Steam entry, Steam may read its icon as it
+  stops) or an antivirus. The next failure's message names the holder.
+  Copy-Item stopped at the first error: half the files new, half old. And the message's "run Install.cmd from
+  %TEMP%\...\pkg" pointed at a folder the reopened app had just deleted.
+- Now (Install.ps1 Copy-Files): file by file, a held file is retried for 20 s; still held, it's renamed aside
+  (`*.old-xxxxxxxx`, allowed for a program file in use; removed by the next setup) and the new one put in its
+  place; still locked (no rename either): stopped with the holder's name from the Restart Manager (rstrtmgr
+  RmGetList). The app keeps the download when an update failed; its message offers Update now again.
+- installtest: three update runs with MHFZ-Plus-App.exe held by another process (3 s; all along with FILE_SHARE_DELETE
+  as a running image; all along locked).
 ## Debug tooling
 
 - **Live config:** the mod re-reads `mhfz-fps.ini` whenever it changes on disk (checked twice a second). Changing `capture_trigger` or `dump_trigger` starts a capture or dump remotely. Isolation switches: `interp_vs`, `interp_xform`, `interp_up`, `interp_ps`, `lerp_nonpos`.

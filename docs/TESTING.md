@@ -86,7 +86,9 @@ The Python scripts in `tools\` read dumps and clips (`ghosts.py`, `flickerscan.p
   Steam configuration), plays both simulated servers, reinstalls, updates in place as the app's Update now does
   (`-Update`: English off, the chosen server, app options, the graphics backend, desktop shortcut and Steam entries
   must all stay) and uninstalls; it also checks that a Steam shortcuts file of a layout we don't know is refused and
-  left byte for byte as it was. `-NoPlay` leaves out the two game sessions (they open windows).
+  left byte for byte as it was. The update also runs with the app's exe held by another process: for 3 s (waited
+  for), all along as a running program's file is (moved aside), all along locked (stopped, naming the holder).
+  `-NoPlay` leaves out the two game sessions (they open windows).
 - `tools/linuxtest.sh` does the same on Linux (or in WSL), with Wine and every window in a virtual screen: `install.sh`
   from the unzipped release against a simulated Steam (Proton) setup and a Lutris / plain Wine setup, an update
   install, `mhfz-plus update` with every choice kept (the package standing in for the download; GitHub's answer

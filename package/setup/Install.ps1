@@ -110,6 +110,69 @@ function Set-Backend($path, $value) {
     } else { return }
     [IO.File]::WriteAllText($path, ($lines -join "`r`n") + "`r`n", (New-Object Text.UTF8Encoding $false))
 }
+# Who has a file open (Windows' Restart Manager), for the message when it stays in use: ' (by Steam)', or ''.
+function Get-Holder([string]$path) {
+    try {
+        if (-not ('MhfzPlus.Rm' -as [type])) {
+            Add-Type -Namespace MhfzPlus -Name Rm -MemberDefinition @'
+[StructLayout(LayoutKind.Sequential)] public struct UNIQUE_PROCESS { public int Pid; public System.Runtime.InteropServices.ComTypes.FILETIME Start; }
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] public struct PROCESS_INFO {
+    public UNIQUE_PROCESS Process;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] public string AppName;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)] public string ServiceName;
+    public int AppType; public uint AppStatus; public uint TSSessionId; [MarshalAs(UnmanagedType.Bool)] public bool Restartable; }
+[DllImport("rstrtmgr.dll", CharSet = CharSet.Unicode)] static extern int RmStartSession(out uint h, int flags, System.Text.StringBuilder key);
+[DllImport("rstrtmgr.dll")] static extern int RmEndSession(uint h);
+[DllImport("rstrtmgr.dll", CharSet = CharSet.Unicode)] static extern int RmRegisterResources(uint h, uint nFiles, string[] files, uint nApps, UNIQUE_PROCESS[] apps, uint nServices, string[] services);
+[DllImport("rstrtmgr.dll")] static extern int RmGetList(uint h, out uint needed, ref uint n, [In, Out] PROCESS_INFO[] info, ref uint reasons);
+public static string Holders(string path) {
+    uint h;
+    if (RmStartSession(out h, 0, new System.Text.StringBuilder(64)) != 0) return "";
+    try {
+        uint needed, n = 0, reasons = 0;
+        if (RmRegisterResources(h, 1, new[] { path }, 0, null, 0, null) != 0) return "";
+        if (RmGetList(h, out needed, ref n, null, ref reasons) != 234 || needed == 0) return "";   // (ERROR_MORE_DATA: that many)
+        var info = new PROCESS_INFO[needed]; n = needed;
+        if (RmGetList(h, out needed, ref n, info, ref reasons) != 0) return "";
+        var names = new System.Collections.Generic.List<string>();
+        for (int i = 0; i < n; i++) if (!names.Contains(info[i].AppName)) names.Add(info[i].AppName);
+        return string.Join(", ", names.ToArray());
+    } finally { RmEndSession(h); }
+}
+'@
+        }
+        $n = [MhfzPlus.Rm]::Holders($path)
+        if ($n) { return " (by $n)" }
+    } catch { }
+    return ''
+}
+
+# The files of the new version into the install, one by one. A file another program holds for a moment (Steam
+# reading the icon of a program that just closed, an antivirus scan) is tried again for up to 20 s; one still held
+# then is renamed out of the way - Windows allows that for a program file in use - and its new copy put in its place
+# (the old one goes next time). An update stopped half-way left a mix of two versions (1.4.4).
+function Copy-Files([string[]]$from, [string]$dst) {
+    foreach ($src in $from) {
+        $base = if (Test-Path $src -PathType Container) { (Resolve-Path $src).Path.TrimEnd('\') } else { Split-Path (Resolve-Path $src).Path }
+        $files = if (Test-Path $src -PathType Container) { Get-ChildItem $src -Recurse -File -Force } else { Get-Item $src }
+        foreach ($f in $files) {
+            $rel = $f.FullName.Substring($base.Length + 1)
+            $to = Join-Path $dst $rel
+            [void][IO.Directory]::CreateDirectory((Split-Path $to))
+            for ($i = 0; ; $i++) {
+                try { [IO.File]::Copy($f.FullName, $to, $true); break }
+                catch [System.IO.IOException] {
+                    if ($i -lt 40) { Start-Sleep -Milliseconds 500; continue }
+                    $aside = "$to.old-" + [Guid]::NewGuid().ToString('N').Substring(0, 8)
+                    try { [IO.File]::Move($to, $aside) } catch { throw "$rel is in use by another program$(Get-Holder $to). Close it, then try again." }
+                    [IO.File]::Copy($f.FullName, $to, $true)
+                    break
+                }
+            }
+        }
+    }
+}
+
 $names = @{ meze = 'MHF-Z MezeLounge (Plus)'; rain = 'MHF-Z Rain (Plus)' }
 function Install-Plus($o) {
     $dst = $o.Target
@@ -120,10 +183,10 @@ function Install-Plus($o) {
     # (an update: the default mod settings come new, with the graphics backend they had - new games start from them)
     $tpl = Join-Path $dst 'fps\mhfz-fps.ini'
     $keptBackend = if ($o.Keep -and (Test-Path $tpl)) { @([IO.File]::ReadAllLines($tpl) | Where-Object { $_ -match '^\s*d3d9_backend\s*=' } | ForEach-Object { ($_ -split '=', 2)[1].Trim() })[0] } else { $null }
-    Copy-Item (Join-Path $pkg 'payload\*') $dst -Recurse -Force
+    Get-ChildItem $dst -Recurse -File -Filter '*.old-*' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue   # (moved aside last time)
+    Copy-Files @((Join-Path $pkg 'payload'), (Join-Path $PSScriptRoot 'SteamShortcuts.ps1'), (Join-Path $PSScriptRoot 'Uninstall.ps1'), (Join-Path $PSScriptRoot 'Report.ps1')) $dst
     if ($keptBackend) { Set-Backend $tpl $keptBackend }
     Remove-Item (Join-Path $dst 'MHFZ-Plus-Settings.exe') -Force -ErrorAction SilentlyContinue   # (1.3 and older: now the MHFZ Plus app)
-    Copy-Item (Join-Path $PSScriptRoot 'SteamShortcuts.ps1'), (Join-Path $PSScriptRoot 'Uninstall.ps1'), (Join-Path $PSScriptRoot 'Report.ps1') $dst -Force
     Get-ChildItem $dst -Recurse -File | Unblock-File   # downloaded files: no SmartScreen prompt on every start
     $exe = Join-Path $dst 'MHFZ-Plus.exe'
 
@@ -310,7 +373,7 @@ if ($Update) {
         "updated to $version"
     } catch { $fail = $_.Exception.Message; "update failed: $fail" }
     if ($fail -and -not $Test) {
-        [void][System.Windows.Forms.MessageBox]::Show("MHFZ Plus couldn't update to ${version}: $fail`n`nTo update by hand: run Install.cmd from`n$pkg", $title, 'OK', 'Warning')
+        [void][System.Windows.Forms.MessageBox]::Show("MHFZ Plus couldn't update to ${version}: $fail`n`nPress Update now in MHFZ Plus to try again, or run Install.cmd from`n$pkg", $title, 'OK', 'Warning')
     }
     if ($Relaunch -and -not $Test) {
         $app = Join-Path $defaultTarget 'MHFZ-Plus-App.exe'

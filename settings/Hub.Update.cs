@@ -161,8 +161,13 @@ namespace MhfzPlus
             string from = IniGet("general", "updated_from", "");
             if (from == "") return;
             IniPut("general", "updated_from", "");
+            // (a failed one keeps its download: setup's message points at its Install.cmd)
+            if (from == version) {
+                var f = ShowToast("The update didn't go through", "MHFZ Plus is still " + version + ". The message setup showed says why; Update now tries again.", true);
+                if (Newer(latest)) f.Buttons.Add(new KeyValuePair<string, Action>("Update now", UpdateNow));
+                return;
+            }
             try { Directory.Delete(Path.Combine(Path.GetTempPath(), "MHFZ-Plus-update"), true); } catch { }   // (the download, done with)
-            if (from == version) { ShowToast("The update didn't go through", "MHFZ Plus is still " + version + ". Help > Check for updates tries again; the message setup showed says why.", true); return; }
             var t = ShowToast("Updated to " + version, "MHFZ Plus " + from + " is now " + version + ". Your settings stayed as they were.", false);
             string page = ReleasePage(Repo + "/releases/tag/v" + version);
             t.Buttons.Add(new KeyValuePair<string, Action>("What's new", () => OpenUrl(page)));

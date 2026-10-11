@@ -117,6 +117,29 @@ $target = if (Test-Path $dl) { try { (New-Object -ComObject WScript.Shell).Creat
 Check ($target -like '*\Plüs B\MHFZ-Plus-App.exe') "the desktop shortcut the player had stays ($target)"
 $r = powershell -NoProfile -ExecutionPolicy Bypass -File $setup -Unattended -Update -Test -LinkDir $links -Target "$s\nothing here" 2>&1
 Check ($LASTEXITCODE -eq 1 -and ($r -match 'no MHFZ Plus install') -and -not (Test-Path "$s\nothing here")) 'no install there: nothing done, said why'
+# another program has MHFZ-Plus-App.exe open while the update copies (1.4.4: Steam or an antivirus right after the
+# app closed - setup stopped half-way): for a moment, all along as a running program's file, all along and locked
+$newApp = (Get-FileHash (Join-Path (Split-Path (Split-Path $setup)) 'payload\MHFZ-Plus-App.exe')).Hash
+function Update-Held($share, [int]$seconds) {
+    $app = "$B\MHFZ-Plus-App.exe"
+    $h = [IO.File]::Open($app, 'Open', 'Read', $share)
+    $out = Join-Path $s 'held.txt'
+    $p = Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$setup`" -Unattended -Update -Test -LinkDir `"$links`" -Target `"$B`"" -NoNewWindow -RedirectStandardOutput $out -PassThru
+    $null = $p.Handle   # (so its exit code is kept)
+    if ($seconds -ge 0) { Start-Sleep $seconds; $h.Close() }
+    $p.WaitForExit()
+    $held = @(Get-ChildItem $B -Filter 'MHFZ-Plus-App.exe.old-*').Count
+    if ($seconds -lt 0) { $h.Close() }
+    [pscustomobject]@{ Code = $p.ExitCode; Out = @(Get-Content $out); Aside = $held; Same = (Get-FileHash $app).Hash -eq $newApp }
+}
+$u = Update-Held 'Read' 3
+Check ($u.Code -eq 0 -and ($u.Out -match 'updated to') -and $u.Same) "held for 3 s: waited for, updated (exit $($u.Code))"
+$u = Update-Held 'Read, Delete' -1
+Check ($u.Code -eq 0 -and ($u.Out -match 'updated to') -and $u.Same -and $u.Aside -eq 1) "in use all along (as a running program): moved aside, updated (exit $($u.Code), $($u.Aside) aside)"
+$u = Update-Held 'Read' -1
+$why = ($u.Out | Where-Object { $_ -match 'update failed' }) -join ' '
+Check ($u.Code -eq 1 -and $why -match 'MHFZ-Plus-App\.exe is in use by another program \(by .+\)') "locked all along: stopped, says by whom ($why)"
+Check (@(Get-ChildItem $B -Recurse -Filter '*.old-*').Count -eq 0) 'the file moved aside last time is gone'
 Set-Content $iniB ((Get-Content $iniB -Encoding Unicode) -replace '^english=0$', 'english=1') -Encoding Unicode
 
 "=== Steam's file kept safe (a layout we don't know is left alone)"

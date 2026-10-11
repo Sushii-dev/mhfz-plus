@@ -23,7 +23,7 @@ using System.Windows.Forms;
 
 [assembly: System.Reflection.AssemblyTitle("MHFZ Plus")]
 [assembly: System.Reflection.AssemblyProduct("MHFZ Plus")]
-[assembly: System.Reflection.AssemblyVersion("1.4.4.0")]
+[assembly: System.Reflection.AssemblyVersion("1.4.5.0")]
 
 namespace MhfzPlus
 {
