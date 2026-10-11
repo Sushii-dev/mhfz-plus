@@ -100,6 +100,10 @@ namespace MhfzPlus
             }
             rows.Add(new AppRow { Label = "Close this window when a game starts", Help = "MHFZ Plus keeps working in the background either way.",
                 Options = new[] { new[] { "0", "OFF" }, new[] { "1", "ON" } }, Get = () => IniGet("general", "close_on_start", "0"), Set = v => IniPut("general", "close_on_start", v) });
+            if (!wine)
+                rows.Add(new AppRow { Label = "Start through Steam", Help = "START runs the game through its MHFZ Plus entry in Steam (setup's \"Add to Steam\"), so Steam's controller support works: started outside Steam, a controller can act up. With a controller: only while one is plugged in.",
+                    Options = new[] { new[] { "auto", "WITH A CONTROLLER" }, new[] { "1", "ALWAYS" }, new[] { "0", "NEVER" } },
+                    Get = () => IniGet("general", "start_steam", "auto"), Set = v => IniPut("general", "start_steam", v) });
             rows.Add(new AppRow { Label = "Check for updates", Help = "When this window opens, at most once a day: asks GitHub for the newest version number. Nothing else is sent.",
                 Options = new[] { new[] { "1", "ON" }, new[] { "0", "OFF" } }, Get = () => IniGet("general", "update_check", "1"), Set = v => IniPut("general", "update_check", v) });
             rows.Add(new AppRow { Label = "Animations", Help = "Menus that move like the game's. Off: everything appears at once." +

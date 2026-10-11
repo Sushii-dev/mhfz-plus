@@ -32,6 +32,19 @@ game=$t\games\rain\Client
 fps_mode=swap
 "@
 $env:MHFZPLUS_BASE = $base
+# a made-up Steam (never started): this install's entries in one user's shortcuts.vdf, another install's in a newer one
+. (Join-Path $root 'package\setup\SteamShortcuts.ps1')
+$steam = Join-Path $t 'steam'
+foreach ($u in '42', '43') { New-Item -ItemType Directory -Force "$steam\userdata\$u\config" | Out-Null }
+Copy-Item (Join-Path $env:SystemRoot 'System32\PING.EXE') "$steam\steam.exe"
+Copy-Item (Join-Path $env:SystemRoot 'System32\PING.EXE') "$steam\MHFZ-Plus.exe"   # (a stand-in for the launcher Steam starts)
+function Entries($dir) { 'meze', 'rain' | ForEach-Object { [pscustomobject]@{ Name = "MHF-Z $_ (Plus)"; Exe = "$dir\MHFZ-Plus.exe"; StartDir = $dir; LaunchOptions = $_; Icon = "$dir\MHFZ-Plus.exe" } } }
+Set-SteamShortcuts "$steam\userdata\42\config" @(Entries $base)
+Start-Sleep -Milliseconds 50
+Set-SteamShortcuts "$steam\userdata\43\config" @(Entries "$t\another install")
+$ids = (Read-VdfBinary ([IO.File]::ReadAllBytes("$steam\userdata\42\config\shortcuts.vdf")))['shortcuts'].Values | ForEach-Object { "$($_['LaunchOptions'])=$([BitConverter]::ToUInt32([BitConverter]::GetBytes([int]$_['appid']), 0))" }
+Set-Content (Join-Path $t 'steam-ids.txt') $ids
+$env:MHFZPLUS_STEAM = $steam
 
 "== every page, off-screen"
 $shots = Join-Path $t 'shots'
@@ -142,6 +155,48 @@ Check ((S 'Head') -eq 'GAME CRASHED' -and (S 'Problem') -and (ToastTitle) -eq 'T
 Feed 'game closed -> originals restored'
 Check ((S 'Head') -eq 'GAME CRASHED') "after a crash, 'game closed' keeps the crash in view ($(S 'Head'))"
 $f3.Dispose()
+# START through Steam (a made-up Steam folder: never started)
+$want = @{}; foreach ($l in Get-Content (Join-Path (Split-Path $env:MHFZPLUS_BASE) 'steam-ids.txt')) { $k, $v = $l -split '='; $want[$k] = [uint32]$v }
+$find = $t.GetMethod('FindSteamEntry', $bf)
+$e = $find.Invoke($null, @([string]$env:MHFZPLUS_BASE, 'rain'))
+Check ($e -ne $null -and $e.AppId -eq $want['rain'] -and $e.GameId -eq ([uint64]$want['rain'] * 4294967296 + 0x02000000) -and $e.Steam -like '*\steam.exe') "Steam: this install's Rain entry found (steam://rungameid/$($e.GameId)), another install's skipped"
+Check ($find.Invoke($null, @([string]$env:MHFZPLUS_BASE, 'meze')).AppId -eq $want['meze']) 'Steam: the MezeLounge entry found'
+Check ($find.Invoke($null, @([string](Join-Path (Split-Path $env:MHFZPLUS_BASE) 'elsewhere'), 'rain')) -eq $null) 'Steam: no entry for an install Steam has none of'
+$rv = $t.GetMethod('ReadVdf', $bf)
+Check ($rv.Invoke($null, @(, [byte[]](0, 0x73, 0, 5, 0x6B, 0, 1, 8, 8))) -eq $null -and $rv.Invoke($null, @(, [byte[]](0, 0x73, 0, 1))) -eq $null) "Steam: a shortcuts file of a kind it doesn't know, or cut off: not used"
+[void]$t.GetMethod('ControllerConnected', $bf).Invoke($null, @())
+$f4 = [Activator]::CreateInstance($t, @([single]1, $true))
+$put = $t.GetMethod('IniPut', $bf); $sfor = $t.GetMethod('SteamStartFor', $bf)
+$put.Invoke($f4, @('general', 'start_steam', '1')); $a1 = $sfor.Invoke($f4, @('rain'))
+$put.Invoke($f4, @('general', 'start_steam', '0')); $a0 = $sfor.Invoke($f4, @('rain'))
+Check ($a1 -ne $null -and $a0 -eq $null) 'Steam: START goes through Steam with ALWAYS, not with NEVER'
+$follow4 = $t.GetMethod('FollowSession', $bf)
+function NewSteamSession($asked) {
+    $x = [Activator]::CreateInstance($sessT)
+    $sessT.GetField('Server').SetValue($x, 'rain'); $sessT.GetField('Log').SetValue($x, (Join-Path $env:MHFZPLUS_BASE 'MHFZ-Plus-rain.log'))
+    $sessT.GetField('ViaSteam').SetValue($x, $true); $sessT.GetField('Asked').SetValue($x, $asked)
+    $t.GetField('session', $bf).SetValue($f4, $x); $x
+}
+function S4($x, $name) { $sessT.GetField($name).GetValue($x) }
+$x = NewSteamSession ([DateTime]::Now.AddSeconds(-200))
+[void]$follow4.Invoke($f4, @())
+$tt = $t.GetField('toast', $bf).GetValue($f4)
+$keys = @($tt.GetType().GetField('Buttons').GetValue($tt) | ForEach-Object { $_.Key })
+Check ((S4 $x 'Done') -and (S4 $x 'Head') -eq "DIDN'T START" -and ($keys -join ',') -eq 'Start without Steam,Not now') "Steam: nothing started in two minutes - said, with Start without Steam ($(S4 $x 'Head'))"
+$rlog = Join-Path $env:MHFZPLUS_BASE 'MHFZ-Plus-rain.log'
+Set-Content $rlog '01:00:00.000  game closed -> originals restored' -Encoding UTF8   # (the last session's log)
+(Get-Item $rlog).LastWriteTime = [DateTime]::Now.AddMinutes(-5)
+$x = NewSteamSession ([DateTime]::Now)
+$fake = Start-Process (Join-Path (Split-Path $env:MHFZPLUS_BASE) 'steam\MHFZ-Plus.exe') -ArgumentList '-n', '8', '127.0.0.1' -WindowStyle Hidden -PassThru
+Start-Sleep -Milliseconds 300
+[void]$follow4.Invoke($f4, @())
+Check ((S4 $x 'Proc') -eq $null -and -not (S4 $x 'Done') -and (S4 $x 'Head') -eq 'STARTING') "Steam: the last session's log isn't taken for this one ($(S4 $x 'Head'))"
+Set-Content $rlog '01:00:00.000  originals in place, started C:\x\rain-server-launcher.exe - press Play as usual' -Encoding UTF8
+Start-Sleep -Milliseconds 600
+[void]$follow4.Invoke($f4, @())
+Check ((S4 $x 'Proc') -ne $null -and (S4 $x 'Head') -eq 'LAUNCHER OPEN') "Steam: followed once Steam has started it ($(S4 $x 'Head'))"
+try { $fake.Kill() } catch { }
+$f4.Dispose()
 '@
 $ps5 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 foreach ($l in @(& $ps5 -NoProfile -ExecutionPolicy Bypass -File $inside -Exe $Exe 2>&1)) {

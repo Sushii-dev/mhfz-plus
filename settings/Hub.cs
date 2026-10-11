@@ -107,6 +107,7 @@ namespace MhfzPlus
             public long Pos;
             public bool Problem, Done, External, Crashed, ModMissing;
             public DateTime DoneAt;
+            public bool ViaSteam; public DateTime Asked, NextLook;   // (asked of Steam: no process of ours yet)
         }
         class AppRow { public string Label, Help; public string[][] Options; public Func<string> Get; public Action<string> Set; }
 

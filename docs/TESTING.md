@@ -70,6 +70,10 @@ The Python scripts in `tools\` read dumps and clips (`ghosts.py`, `flickerscan.p
   opened, the update check offering only this project's release pages. The update: GitHub's answer is read only
   for this project's release zip with GitHub's SHA-256 (another site, no or a bad checksum, no zip: refused), the
   download's hash is checked, setup gets the install folder intact (spaces, a last `\`), "Updated to" after it.
+  START through Steam, on a made-up Steam folder (`MHFZPLUS_STEAM`; Steam is never started): this install's entry
+  found and another install's skipped, an unknown shortcuts.vdf not used, ALWAYS / NEVER, and the session: followed
+  once a stand-in MHFZ-Plus.exe runs with a new log (the last session's log not taken), "Start without Steam" after
+  two minutes of nothing.
 
 ## Launcher and installer
 

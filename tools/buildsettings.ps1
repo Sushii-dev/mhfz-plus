@@ -1,5 +1,5 @@
 # Builds build\MHFZ-Plus-App.exe, the MHFZ Plus window (settings\Hub.cs, and a file per page: Hub.Play.cs,
-# Hub.Settings.cs, Hub.Help.cs, Hub.Update.cs; Hub.Shots.cs for tests) with the settings model and command line
+# Hub.Settings.cs, Hub.Help.cs, Hub.Update.cs, Hub.Steam.cs; Hub.Shots.cs for tests) with the settings model and command line
 # (settings\Settings.cs) and its animations (settings\Anim.cs), with the C# compiler of Windows' own .NET Framework 4 -
 # nothing to install. The icon is the launcher's (build\mhfz-plus.ico, from tools\mkres.py): the exe's icon, and the
 # same .ico as a resource for the window (every size, for the taskbar and Alt+Tab).

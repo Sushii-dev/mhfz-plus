@@ -1,4 +1,4 @@
-MHFZ Plus 1.4.3
+MHFZ Plus 1.4.4
 ===============
 
 English translation and high frame rate for Monster Hunter Frontier Z, on the MezeLounge and Rain servers.
@@ -43,6 +43,11 @@ PLAY
 Open MHFZ Plus (desktop, Start menu or Steam) instead of the usual launcher. On the Play page pick MezeLounge or
 Rain and press START (or Enter). The game's launcher opens: log in and press Play as usual. MHFZ Plus shows what
 it is doing as the session goes: launcher open, file check passed, in game, game closed.
+
+Playing with a controller: games started outside Steam get no Steam controller support, and a controller can act up
+in them (menus scrolling by themselves). If setup added MHFZ Plus to Steam, START goes through MHFZ Plus's Steam
+entry while a controller is plugged in, so Steam's controller support works (Settings > MHFZ Plus > Start through
+Steam: with a controller, always or never). No Steam entries yet? Run Install.cmd again and tick "Add to Steam".
 
 The other pages: Settings (every setting of the frame-rate mod, and MHFZ Plus's own options) and Help (bug report,
 the original files back, the MHFZ Plus folder, updates, uninstall). Tab switches pages.

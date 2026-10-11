@@ -70,15 +70,27 @@ namespace MhfzPlus
         {
             if (session != null && !session.Done) return;
             if (servers.Count == 0 || !servers[sel].Ready) return;
-            var s = servers[sel];
+            StartDirect(servers[sel].Id, SteamStartFor(servers[sel].Id));
+        }
+        // the session for a server: MHFZ-Plus.exe started here, or through its Steam entry (see Hub.Steam.cs)
+        void StartDirect(string id, SteamEntry steam = null)
+        {
+            var s = servers.FirstOrDefault(x => x.Id == id);
+            if (s == null || !s.Ready) return;
             string exe = Path.Combine(baseDir, "MHFZ-Plus.exe");
             if (!File.Exists(exe)) { ShowToast("Can't start", "MHFZ-Plus.exe is missing from " + baseDir + ". Run the MHFZ Plus setup again.", true); return; }
             if (Process.GetProcessesByName("MHFZ-Plus").Length > 0) { ShowToast("Already running", "MHFZ Plus is already running a game. Close that game first.", true); return; }
             IniPut("general", "server", s.Id);
             string log = Path.Combine(baseDir, "MHFZ-Plus-" + s.Id + ".log");
             try {
-                var p = Process.Start(new ProcessStartInfo(exe, s.Id) { WorkingDirectory = baseDir, UseShellExecute = false });
-                session = new Session { Server = s.Id, Proc = p, Log = log, Title = "Starting " + s.Title + "...", Text = "Putting the original game files in place for the launcher." };
+                if (steam != null) {
+                    Process.Start(new ProcessStartInfo(steam.Steam, "steam://rungameid/" + steam.GameId) { UseShellExecute = false });
+                    session = new Session { Server = s.Id, Log = log, ViaSteam = true, Asked = DateTime.Now, Title = "Starting " + s.Title + " through Steam...",
+                                            Text = "For Steam's controller support. When Steam has to start first, this takes a moment." };
+                } else {
+                    var p = Process.Start(new ProcessStartInfo(exe, s.Id) { WorkingDirectory = baseDir, UseShellExecute = false });
+                    session = new Session { Server = s.Id, Proc = p, Log = log, Title = "Starting " + s.Title + "...", Text = "Putting the original game files in place for the launcher." };
+                }
             } catch (Exception ex) { ShowToast("Can't start", ex.Message, true); return; }
             toast = null;
             if (IniGet("general", "close_on_start", "0") == "1") {
@@ -109,6 +121,7 @@ namespace MhfzPlus
             var s = session;
             if (s == null || s.Done) return;
             string title = s.Server == "rain" ? "Rain" : "MezeLounge";
+            if (s.ViaSteam && s.Proc == null && !SteamStarted(s, title)) return;   // (Steam hasn't started it yet)
             try {
                 if (File.Exists(s.Log)) {
                     using (var f = new FileStream(s.Log, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete)) {

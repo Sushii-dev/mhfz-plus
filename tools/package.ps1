@@ -2,7 +2,7 @@
 #   Install.cmd, README.txt, setup\*.ps1, payload\(MHFZ-Plus.exe, MHFZ-Plus-App.exe, ui\, version.txt, fps\, english\)
 # Usage: tools\package.ps1 [-NoBuild] [-Public]
 #   -Public   the GitHub release: no English data (derived from the game's text) -> dist\public\MHFZ-Plus-<version>.zip
-param([switch]$NoBuild, [string]$Version = "1.4.3", [switch]$Public)
+param([switch]$NoBuild, [string]$Version = "1.4.4", [switch]$Public)
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot
 # the scripts that ship: no line that only fails when it runs (an `else` cut off from its `if` broke setup in 1.4.0/1.4.1)

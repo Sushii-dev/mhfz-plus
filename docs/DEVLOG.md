@@ -377,6 +377,17 @@ in town.
   package.ps1 under Windows PowerShell 5.1 wrote zip names with `\` (Linux unzip keeps them in the names, the update
   refuses them) - the released zips were made under pwsh 7 and are fine; package.ps1 now writes `/` either way.
 - **First release that has it:** the one after 1.4.2. Players on 1.4.2 and older update by hand once; from then on in-app.
+
+### 2026-10-11: START through Steam (controllers)
+
+- A player: with a controller plugged in (untouched), the game's menus acted up when started from the app; from
+  MHFZ Plus's Steam entry they don't (Steam Input). So START (Windows) asks Steam to run that entry:
+  `steam.exe steam://rungameid/<appid << 32 | 0x02000000>`, appid read from userdata\*\config\shortcuts.vdf (the
+  logged-in Steam account's first: HKCU\Software\Valve\Steam\ActiveProcess\ActiveUser), only an entry whose Exe is this
+  install's MHFZ-Plus.exe with LaunchOptions = the server. `start_steam` = auto (a controller seen by winmm
+  joyGetPosEx or XInput) / 1 / 0. Not when the app itself runs under Steam (SteamGameId set) or Wine.
+- The session is "asked of Steam" until MHFZ-Plus.exe runs AND its log is newer than the ask (the launcher rotates
+  the log at start; the old one would read as "game closed"); 2 min without: "Start without Steam" toast.
 ## Debug tooling
 
 - **Live config:** the mod re-reads `mhfz-fps.ini` whenever it changes on disk (checked twice a second). Changing `capture_trigger` or `dump_trigger` starts a capture or dump remotely. Isolation switches: `interp_vs`, `interp_xform`, `interp_up`, `interp_ps`, `lerp_nonpos`.
