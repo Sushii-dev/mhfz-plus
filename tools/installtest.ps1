@@ -1,7 +1,8 @@
 # End-to-end test of the package as a friend would use it, against the simulated games (launcher\simtest.ps1
 # makes sim\) and a COPY of the Steam config: extract the zip, install, reinstall into another folder, play both
-# servers, uninstall. Never touches the real Steam files, registry or shortcuts (-Test).
-param([string]$Zip = "")
+# servers, update in place, uninstall. Never touches the real Steam files, registry or shortcuts (-Test).
+#   -NoPlay   without the two game sessions (they open windows: for when someone is at the PC)
+param([string]$Zip = "", [switch]$NoPlay)
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot
 if (-not $Zip) { $Zip = Get-ChildItem "$root\dist\MHFZ-Plus-*.zip" | Sort-Object LastWriteTime | Select-Object -Last 1 -ExpandProperty FullName }
@@ -66,6 +67,7 @@ Check (@($o | Where-Object { [string]$_['Exe'] -like "*\Plüs B\MHFZ-Plus.exe*" 
        @($o | Where-Object { [string]$_['Exe'] -like "*\Plüs B\MHFZ-Plus-App.exe*" }).Count -eq 1) 'entries point at the new folder'
 Remove-Item -LiteralPath "$s\Plüs A" -Recurse -Force
 
+if ($NoPlay) { "=== play: left out (-NoPlay)" } else {
 "=== play"
 Remove-Item "$sim\report.txt" -ErrorAction SilentlyContinue
 foreach ($srv in 'meze', 'rain') {
@@ -78,6 +80,44 @@ $rep | ForEach-Object { "    $_" }
 Check ($rep -match 'in game: 41 English') 'meze: English in game'
 Check ($rep -match 'GET_TXT: 40 English.*at 1 s present') 'rain: English and mod in game'
 Check ($rep -match 'check passed') 'rain: launcher check passed'
+}
+
+"=== update in place (the app's Update now: setup -Update keeps every choice)"
+$B = "$s\Plüs B"
+$iniB = Join-Path $B 'MHFZ-Plus.ini'
+$sec = ''   # (the player's choices: Rain chosen, English off for MezeLounge, an app option)
+$x = foreach ($l in (Get-Content $iniB -Encoding Unicode)) {
+    if ($l -match '^\[(.+)\]$') { $sec = $Matches[1] }
+    if ($sec -eq 'meze' -and $l -match '^english=') { 'english=0' }
+    elseif ($sec -eq 'general' -and $l -match '^server=') { 'server=rain' }
+    else { $l; if ($l -eq '[general]') { 'animations=0' } }
+}
+Set-Content $iniB $x -Encoding Unicode
+$pkgVer = Get-Content (Join-Path (Split-Path (Split-Path $setup)) 'payload\version.txt') | Select-Object -First 1
+Set-Content "$B\version.txt" '1.0.0'
+Set-Content "$links\Desktop\MHFZ Plus.lnk" 'the desktop shortcut the player has'
+$vdfBefore = [Convert]::ToBase64String([IO.File]::ReadAllBytes("$s\steamcfg\shortcuts.vdf"))
+$r = powershell -NoProfile -ExecutionPolicy Bypass -File $setup -Unattended -Update -Test -LinkDir $links -Target $B 2>&1
+$r | ForEach-Object { "    $_" }
+$exitUpd = $LASTEXITCODE
+Check ($exitUpd -eq 0 -and ($r -match "updated to $([regex]::Escape($pkgVer))") -and -not ($r -match 'Setup failed|not recognized|Exception|update failed')) "setup -Update ran to its end (exit $exitUpd)"
+$after = Get-Content $iniB -Encoding Unicode
+$sec = ''; $kv = @{}
+foreach ($l in $after) { if ($l -match '^\[(.+)\]$') { $sec = $Matches[1] } elseif ($l -match '^([^=]+)=(.*)$') { $kv["$sec.$($Matches[1])"] = $Matches[2] } }
+Check ($kv['meze.english'] -eq '0' -and $kv['rain.english'] -eq '1') "English stays off for MezeLounge, on for Rain ($($kv['meze.english']) / $($kv['rain.english']))"
+Check ($kv['general.server'] -eq 'rain' -and $kv['general.animations'] -eq '0') "the chosen server and the app's options stay ($($kv['general.server']), animations=$($kv['general.animations']))"
+Check ($kv['meze.game'] -eq "$sim\meze" -and $kv['rain.game'] -eq "$sim\rain\Client") 'both games found again from the install'
+Check ($r -match 'meze: English off' -and $r -match 'rain: English ready \(40') 'English rebuilt only where it is on'
+Check ((Get-Content "$B\version.txt" | Select-Object -First 1) -eq $pkgVer) "the new program files are in ($pkgVer)"
+$tpl = Get-Content "$B\fps\mhfz-fps.ini" -Encoding UTF8 | Where-Object { $_ -match '^d3d9_backend=' }
+Check ($tpl -eq "d3d9_backend=$B\fps\dxvk\d3d9.dll") "the default mod settings keep the bundled DXVK ($tpl)"
+Check ([Convert]::ToBase64String([IO.File]::ReadAllBytes("$s\steamcfg\shortcuts.vdf")) -ceq $vdfBefore) 'Steam entries untouched'
+$dl = Join-Path $links 'Desktop\MHFZ Plus.lnk'
+$target = if (Test-Path $dl) { try { (New-Object -ComObject WScript.Shell).CreateShortcut($dl).TargetPath } catch { '' } } else { '' }
+Check ($target -like '*\Plüs B\MHFZ-Plus-App.exe') "the desktop shortcut the player had stays ($target)"
+$r = powershell -NoProfile -ExecutionPolicy Bypass -File $setup -Unattended -Update -Test -LinkDir $links -Target "$s\nothing here" 2>&1
+Check ($LASTEXITCODE -eq 1 -and ($r -match 'no MHFZ Plus install') -and -not (Test-Path "$s\nothing here")) 'no install there: nothing done, said why'
+Set-Content $iniB ((Get-Content $iniB -Encoding Unicode) -replace '^english=0$', 'english=1') -Encoding Unicode
 
 "=== Steam's file kept safe (a layout we don't know is left alone)"
 $vs = Join-Path $s 'vdfsafe'

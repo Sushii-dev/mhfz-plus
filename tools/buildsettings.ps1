@@ -1,5 +1,5 @@
 # Builds build\MHFZ-Plus-App.exe, the MHFZ Plus window (settings\Hub.cs, and a file per page: Hub.Play.cs,
-# Hub.Settings.cs, Hub.Help.cs; Hub.Shots.cs for tests) with the settings model and command line
+# Hub.Settings.cs, Hub.Help.cs, Hub.Update.cs; Hub.Shots.cs for tests) with the settings model and command line
 # (settings\Settings.cs) and its animations (settings\Anim.cs), with the C# compiler of Windows' own .NET Framework 4 -
 # nothing to install. The icon is the launcher's (build\mhfz-plus.ico, from tools\mkres.py): the exe's icon, and the
 # same .ico as a resource for the window (every size, for the taskbar and Alt+Tab).
@@ -11,6 +11,7 @@ if (-not (Test-Path "$root\build\mhfz-plus.ico") -or (Get-Item "$root\tools\mkre
     python "$root\tools\mkres.py"; if ($LASTEXITCODE) { throw "mkres failed" }
 }
 & $csc /nologo /target:winexe /optimize+ /platform:anycpu /out:"$root\build\MHFZ-Plus-App.exe" /win32icon:"$root\build\mhfz-plus.ico" `
-    "/resource:$root\build\mhfz-plus.ico,mhfz-plus.ico" /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Core.dll "$root\settings\Settings.cs" "$root\settings\Hub*.cs" "$root\settings\Anim.cs"
+    "/resource:$root\build\mhfz-plus.ico,mhfz-plus.ico" /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Core.dll `
+    /r:System.Web.Extensions.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll "$root\settings\Settings.cs" "$root\settings\Hub*.cs" "$root\settings\Anim.cs"
 if ($LASTEXITCODE -ne 0) { throw "app build failed" }
 Get-Item "$root\build\MHFZ-Plus-App.exe" | Select-Object Name, Length, LastWriteTime

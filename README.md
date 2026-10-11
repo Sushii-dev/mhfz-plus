@@ -104,7 +104,9 @@ logs, settings and PC specs and opens the form with your setup filled in. Write 
 ## Install
 
 Download the latest release, extract it, run `Install.cmd` and follow the window. The included `README.txt` covers
-installing, playing, settings, reporting a glitch and uninstalling.
+installing, playing, settings, reporting a glitch and uninstalling. Later versions install from inside the app: it
+says when one is out, and **Update now** downloads it, checks it against GitHub's SHA-256 checksum, installs it with
+every choice kept and opens again.
 
 **Linux and Steam Deck:** extract it and run `sh install.sh` in a terminal. MHFZ Plus goes into the Wine prefix the
 game already runs in (Steam/Proton, Lutris, Bottles, Heroic or plain Wine), with a menu entry and optional Steam

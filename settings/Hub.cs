@@ -228,6 +228,7 @@ namespace MhfzPlus
             tick.Start();
             AttachRunningSession();
             if (!offline && IniGet("general", "update_check", "1") != "0") CheckUpdate(false);
+            if (!offline) SayUpdated();
         }
 
         void LoadFonts()
@@ -708,7 +709,7 @@ namespace MhfzPlus
             float x = 18;
             if (page == Page.Play) { KeyBox(g, "Enter", "Start", x, 664, "kstart", servers.Count > 0 ? (Action)Start : null); x += 104; }
             KeyBox(g, "Tab", "Next page", x, 664, "ktab", () => GoTo((Page)(((int)page + 1) % 3)));
-            string upd = checking ? "Checking for updates..." : Newer(latest) ? "MHFZ Plus " + latest + " is out: download" : "Up to date · " + version;
+            string upd = updating ? "Updating..." : checking ? "Checking for updates..." : Newer(latest) ? "MHFZ Plus " + latest + " is out: update" : "Up to date · " + version;
             var s = g.MeasureString(upd, fSmall);
             var r = new RectangleF(W - 18 - s.Width - 30, 664, s.Width + 30, 24);
             float hov = Hv("upd");
@@ -718,7 +719,7 @@ namespace MhfzPlus
             Gem(g, r.X + 12, r.Y + 12, 0, 5, news || checking ? Glow : 0);
             if (news || checking) idle.Add(new RectangleF(r.X + 3, r.Y + 3, 18, 18));
             Outlined(g, upd, fSmall, news ? Ui.HudYellow : Ease.Mix(Ui.HudText, Ui.HudYellow, hov), r.X + 22, r.Y + 4);
-            Hot(r, "upd", () => { if (Newer(latest)) OpenUrl(latestUrl); else CheckUpdate(true); });
+            Hot(r, "upd", () => { if (updating) return; if (Newer(latest)) OfferUpdate(); else CheckUpdate(true); });
         }
         void DrawToast(Graphics g)
         {

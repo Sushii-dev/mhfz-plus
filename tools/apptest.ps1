@@ -77,6 +77,42 @@ $repo = 'https://github.com/Sushii-dev/mhfz-plus'
 Check ($rp.Invoke($null, @("$repo/releases/tag/v9.9.9")) -eq "$repo/releases/tag/v9.9.9") "the update check's release page is kept"
 Check ($rp.Invoke($null, @('https://example.com/releases/x')) -eq "$repo/releases/latest") "another site from the update check is replaced by the project's page"
 Check ($rp.Invoke($null, @("$repo/releases/x`" & calc")) -eq "$repo/releases/latest") "a page address with quotes is replaced"
+# the update: only this project's zip, only with GitHub's checksum
+$rr = $t.GetMethod('ReadRelease', $bf)
+$hex = [string]('ab' * 32)
+function Rel($name, $url, $digest) { '{"tag_name":"v9.9.9","assets":[{"name":"notes.txt","browser_download_url":"' + $repo + '/releases/download/v9.9.9/notes.txt"},{"name":"' + $name + '","size":123,"browser_download_url":"' + $url + '"' + $(if ($digest) { ',"digest":"' + $digest + '"' }) + '}]}' }
+function Why($json) { try { [void]$rr.Invoke($null, @($json, 'MHFZ-Plus-')); 'taken' } catch { $_.Exception.InnerException.Message } }
+$good = $rr.Invoke($null, @((Rel 'MHFZ-Plus-9.9.9.zip' "$repo/releases/download/v9.9.9/MHFZ-Plus-9.9.9.zip" "sha256:$hex"), 'MHFZ-Plus-'))
+Check ($good.Tag -eq '9.9.9' -and $good.Sha256 -eq $hex -and $good.Size -eq 123 -and $good.Url -like "$repo/releases/download/*") "update: the release zip and its checksum are read"
+Check ((Why (Rel 'MHFZ-Plus-9.9.9.zip' 'https://example.com/releases/download/v9.9.9/MHFZ-Plus-9.9.9.zip' "sha256:$hex")) -match "isn't on this project") "update: a zip from another site is refused"
+Check ((Why (Rel 'MHFZ-Plus-9.9.9.zip' "$repo/releases/download/v9.9.9/MHFZ-Plus-9.9.9.zip" $null)) -match 'no checksum') "update: a zip without GitHub's checksum is refused"
+Check ((Why (Rel 'MHFZ-Plus-9.9.9.zip' "$repo/releases/download/v9.9.9/MHFZ-Plus-9.9.9.zip" 'sha256:abc')) -match 'no checksum') "update: a short checksum is refused"
+Check ((Why (Rel 'Other-9.9.9.zip' "$repo/releases/download/v9.9.9/Other-9.9.9.zip" "sha256:$hex")) -match 'has no MHFZ-Plus-9.9.9.zip') "update: a release without the zip is refused"
+Check ((Why '{"message":"API rate limit exceeded"}') -match 'no version') "update: GitHub's rate-limit answer is refused"
+$sf = [string](Join-Path (Split-Path $env:MHFZPLUS_BASE) 'sha.bin')
+[IO.File]::WriteAllText($sf, 'abc')
+$same = $t.GetMethod('SameSha256', $bf)
+Check ($same.Invoke($null, @($sf, 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad')) -and -not $same.Invoke($null, @($sf, $hex))) "update: the download's SHA-256 is checked"
+$fake = Join-Path (Split-Path $env:MHFZPLUS_BASE) 'a b\setup\Install.ps1'   # (setup as the update starts it: what arrives)
+New-Item -ItemType Directory -Force (Split-Path $fake) | Out-Null
+Set-Content $fake 'param([switch]$Unattended, [switch]$Update, [switch]$Relaunch, [string]$Target) [IO.File]::WriteAllText("$PSScriptRoot\got.txt", "$Unattended|$Update|$Relaunch|$Target")'
+$ua = $t.GetMethod('UpdateArgs', $bf).Invoke($null, @([string]$fake, [string]($env:MHFZPLUS_BASE + '\')))
+Start-Process (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -ArgumentList $ua -Wait -WindowStyle Hidden
+$got = Get-Content (Join-Path (Split-Path $fake) 'got.txt') -ErrorAction SilentlyContinue
+Check ($got -eq "True|True|True|$env:MHFZPLUS_BASE") "update: setup gets the install folder, spaces and a last \ too ($got)"
+$t.GetField('latest', $bf).SetValue($f, '9.9.9')
+$t.GetMethod('OfferUpdate', $bf).Invoke($f, @())
+$toast = $t.GetField('toast', $bf).GetValue($f)
+$keys = @($toast.GetType().GetField('Buttons').GetValue($toast) | ForEach-Object { $_.Key })
+Check ($toast.GetType().GetField('Title').GetValue($toast) -eq 'MHFZ Plus 9.9.9 is out' -and ($keys -join ',') -eq "Update now,What's new") "update: offered with Update now / What's new ($($keys -join ','))"
+$ver = $t.GetField('version', $bf).GetValue($f)
+$sayUpd = $t.GetMethod('SayUpdated', $bf)
+$t.GetMethod('IniPut', $bf).Invoke($f, @('general', 'updated_from', '1.0.0')); $sayUpd.Invoke($f, @())
+$toast = $t.GetField('toast', $bf).GetValue($f)
+Check ($toast.GetType().GetField('Title').GetValue($toast) -eq "Updated to $ver" -and -not ((Get-Content $ini) -match '^updated_from=.')) "update: after it, 'Updated to $ver' once"
+$t.GetMethod('IniPut', $bf).Invoke($f, @('general', 'updated_from', $ver)); $sayUpd.Invoke($f, @())
+$toast = $t.GetField('toast', $bf).GetValue($f)
+Check ($toast.GetType().GetField('Title').GetValue($toast) -eq "The update didn't go through") "update: a failed one is said"
 $f.Dispose()
 $f2 = [Activator]::CreateInstance($t, @([single]1, $true))
 Check ($t.GetField('servers', $bf).GetValue($f2)[$t.GetField('sel', $bf).GetValue($f2)].Id -eq 'rain') "opened again: Rain is chosen"

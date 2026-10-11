@@ -361,6 +361,22 @@ in town.
 - **App:** single instance (mutex), crash log MHFZ-Plus-App.log + plain message, OpenUrl https only, update page must
   be this repo's /releases/, Hub.cs split by page, `tools\apptest.ps1` (no window; caught --shots rewriting server=).
 - **Mod settings:** retro_frames 8..600 (VRAM), retro_ticks 0..48, margin_us 0..30000 (a negative one would slow the tick).
+
+### 2026-10-11: in-app update (asked for by a player)
+
+- **Flow:** "Update now" (toast once per new version, footer, Help > Check for updates) -> GitHub API releases/latest
+  -> the asset `MHFZ-Plus-<tag>.zip`, only from `<repo>/releases/download/` and only with GitHub's `digest`
+  (sha256) -> download to %TEMP%\MHFZ-Plus-update, hash checked, unzipped -> hidden `setup\Install.ps1 -Unattended
+  -Update -Relaunch -Target <install>` -> app closes; setup waits for it, installs with Keep (server, english/fps per
+  game, the backend in fps\mhfz-fps.ini, desktop shortcut kept; Steam untouched), reopens the app -> "Updated to X"
+  (ini updated_from; equal to the running version = it failed: said). Linux: `mhfz-plus update --wait --relaunch`
+  (same checks, then the NEW package's `mhfzplus.py install --update` with MHFZPLUS_UPDATER = its pid, because a
+  process started from Wine carries WINEPREFIX and prefix_in_use would see the updater itself).
+- **Pitfalls found by the tests:** the app's folder ends in `\` (`-Target "C:\x\"` escapes the quote: trimmed);
+  Windows PowerShell's Get-Content reads the BOM-less UTF-8 mhfz-fps.ini as ANSI (non-ASCII paths garbled: ReadAllLines);
+  package.ps1 under Windows PowerShell 5.1 wrote zip names with `\` (Linux unzip keeps them in the names, the update
+  refuses them) - the released zips were made under pwsh 7 and are fine; package.ps1 now writes `/` either way.
+- **First release that has it:** the one after 1.4.2. Players on 1.4.2 and older update by hand once; from then on in-app.
 ## Debug tooling
 
 - **Live config:** the mod re-reads `mhfz-fps.ini` whenever it changes on disk (checked twice a second). Changing `capture_trigger` or `dump_trigger` starts a capture or dump remotely. Isolation switches: `interp_vs`, `interp_xform`, `interp_up`, `interp_ps`, `lerp_nonpos`.

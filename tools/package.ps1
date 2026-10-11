@@ -2,7 +2,7 @@
 #   Install.cmd, README.txt, setup\*.ps1, payload\(MHFZ-Plus.exe, MHFZ-Plus-App.exe, ui\, version.txt, fps\, english\)
 # Usage: tools\package.ps1 [-NoBuild] [-Public]
 #   -Public   the GitHub release: no English data (derived from the game's text) -> dist\public\MHFZ-Plus-<version>.zip
-param([switch]$NoBuild, [string]$Version = "1.4.2", [switch]$Public)
+param([switch]$NoBuild, [string]$Version = "1.4.3", [switch]$Public)
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot
 # the scripts that ship: no line that only fails when it runs (an `else` cut off from its `if` broke setup in 1.4.0/1.4.1)
@@ -70,7 +70,8 @@ Remove-Item $zip -ErrorAction SilentlyContinue
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [IO.Compression.ZipFile]::CreateFromDirectory($out, $zip, [IO.Compression.CompressionLevel]::Optimal, $true)
 # entries marked as made on Unix with file modes, so unzip on Linux keeps install.sh, uninstall.sh and mhfzplus.py
-# executable (Windows' own extraction ignores this)
+# executable (Windows' own extraction ignores this); names with / (Windows PowerShell 5.1's zip writer uses \, which
+# Linux takes as part of a file name - and the in-app update refuses)
 $b = [IO.File]::ReadAllBytes($zip)
 $e = $b.Length - 22
 while ($e -ge 0 -and [BitConverter]::ToUInt32($b, $e) -ne 0x06054b50) { $e-- }
@@ -79,6 +80,12 @@ $p = [BitConverter]::ToUInt32($b, $e + 16)
 for ($i = 0; $i -lt [BitConverter]::ToUInt16($b, $e + 10); $i++) {
     if ([BitConverter]::ToUInt32($b, $p) -ne 0x02014b50) { throw "zip: bad central directory entry $i" }
     $nlen = [BitConverter]::ToUInt16($b, $p + 28)
+    $lh = [BitConverter]::ToUInt32($b, $p + 42)   # (its local header: the name again, same length)
+    if ([BitConverter]::ToUInt32($b, $lh) -ne 0x04034b50 -or [BitConverter]::ToUInt16($b, $lh + 26) -ne $nlen) { throw "zip: bad local header $i" }
+    for ($k = 0; $k -lt $nlen; $k++) {
+        if ($b[$p + 46 + $k] -eq 0x5C) { $b[$p + 46 + $k] = 0x2F }
+        if ($b[$lh + 30 + $k] -eq 0x5C) { $b[$lh + 30 + $k] = 0x2F }
+    }
     $entry = [Text.Encoding]::UTF8.GetString($b, $p + 46, $nlen)
     $mode = if ($entry.EndsWith('/')) { 0x41ED } elseif ($entry -match '\.(sh|py)$') { 0x81ED } else { 0x81A4 }   # 040755 / 100755 / 100644
     $b[$p + 4] = 20; $b[$p + 5] = 3   # version made by: 2.0 on Unix

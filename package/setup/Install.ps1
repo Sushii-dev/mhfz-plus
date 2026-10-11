@@ -3,11 +3,14 @@
 #   -Unattended            no window: installs for every game found (add -Steam for the Steam shortcuts)
 #   -Test                  for testing: no registry entry, no shortcuts, Steam only with -SteamConfig folders
 #   -LinkDir <folder>      with -Test: the shortcuts are made there (Programs\, Desktop\) instead of left out
+#   -Update [-Relaunch]    the in-app update: the install in -Target (or the usual folder) gets these program files and
+#                          keeps every choice (games, English, frame rate, graphics backend, shortcuts, Steam entries);
+#                          -Relaunch opens MHFZ Plus again after, also when the update failed (a message says why)
 param([switch]$Unattended, [switch]$Test, [string]$MezeDir = '', [string]$RainDir = '', [string]$Target = '',
       [string]$KitDir = '',   # an earlier English kit (MHFZ-Meze-translation) whose backups can be reused
       [string[]]$SteamConfig = @(), [switch]$Steam, [switch]$NoEnglish, [switch]$NoFps, [switch]$NoDxvk,
       [string]$Screenshot = '',                            # testing: draw the window into this PNG and exit
-      [string]$LinkDir = '')
+      [string]$LinkDir = '', [switch]$Update, [switch]$Relaunch)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
@@ -114,7 +117,11 @@ function Install-Plus($o) {
     if (-not $Test -and (Get-Process -Name 'MHFZ-Plus' -ErrorAction SilentlyContinue)) { throw 'MHFZ Plus is running. Close the game first.' }
     if (-not $Test -and (Get-Process -Name 'MHFZ-Plus-App', 'MHFZ-Plus-Settings' -ErrorAction SilentlyContinue)) { throw 'The MHFZ Plus window is open. Close it first.' }
     New-Item -ItemType Directory -Force $dst | Out-Null
+    # (an update: the default mod settings come new, with the graphics backend they had - new games start from them)
+    $tpl = Join-Path $dst 'fps\mhfz-fps.ini'
+    $keptBackend = if ($o.Keep -and (Test-Path $tpl)) { @([IO.File]::ReadAllLines($tpl) | Where-Object { $_ -match '^\s*d3d9_backend\s*=' } | ForEach-Object { ($_ -split '=', 2)[1].Trim() })[0] } else { $null }
     Copy-Item (Join-Path $pkg 'payload\*') $dst -Recurse -Force
+    if ($keptBackend) { Set-Backend $tpl $keptBackend }
     Remove-Item (Join-Path $dst 'MHFZ-Plus-Settings.exe') -Force -ErrorAction SilentlyContinue   # (1.3 and older: now the MHFZ Plus app)
     Copy-Item (Join-Path $PSScriptRoot 'SteamShortcuts.ps1'), (Join-Path $PSScriptRoot 'Uninstall.ps1'), (Join-Path $PSScriptRoot 'Report.ps1') $dst -Force
     Get-ChildItem $dst -Recurse -File | Unblock-File   # downloaded files: no SmartScreen prompt on every start
@@ -126,12 +133,14 @@ function Install-Plus($o) {
     $iniPath = Join-Path $dst 'MHFZ-Plus.ini'
     $ini = Read-Ini $iniPath
     if (-not $ini.Contains('general')) { $ini['general'] = [ordered]@{} }
-    $ini['general']['server'] = $servers[0]
+    # ($o.Keep, the in-app update: the player's choices stay as they are - a public download has no English data, and
+    # writing its "English off" would switch off a translation someone has)
+    if ($servers -and -not ($o.Keep -and $ini['general'].Contains('server'))) { $ini['general']['server'] = $servers[0] }
     foreach ($s in $servers) {
         if (-not $ini.Contains($s)) { $ini[$s] = [ordered]@{} }
         $ini[$s]['game'] = if ($s -eq 'meze') { $o.MezeDir } else { Join-Path $o.RainDir 'Client' }
-        $ini[$s]['english'] = [int][bool]$o.English
-        $ini[$s]['fps'] = [int][bool]$o.Fps
+        if (-not ($o.Keep -and $ini[$s].Contains('english'))) { $ini[$s]['english'] = [int][bool]$o.English }
+        if (-not ($o.Keep -and $ini[$s].Contains('fps'))) { $ini[$s]['fps'] = [int][bool]$o.Fps }
         if (-not $ini[$s].Contains('fps_mode')) { $ini[$s]['fps_mode'] = if ($s -eq 'meze') { 'stay' } else { 'swap' } }
     }
     Write-Ini $iniPath $ini
@@ -139,7 +148,7 @@ function Install-Plus($o) {
     # graphics backend: the DXVK that comes with MHFZ Plus (much less CPU time per frame), or Windows' own. Set in the
     # default settings (new games start from it) and in each game's own settings; a backend someone chose by hand stays.
     $dxvk = Join-Path $dst 'fps\dxvk\d3d9.dll'
-    if ($o.Fps -and (Test-Path $dxvk)) {
+    if ($o.Fps -and -not $o.Keep -and (Test-Path $dxvk)) {   # (an update keeps the backend the player has)
         $files = @((Join-Path $dst 'fps\mhfz-fps.ini'), (Join-Path $dst 'fps-state\rain\mhfz-fps.ini'))
         if ($o.Meze) { $files += Join-Path $o.MezeDir 'mhfz-fps.ini' }
         foreach ($f in $files) { if (Test-Path $f) { Set-Backend $f $(if ($o.Dxvk) { $dxvk } else { '' }) } }
@@ -166,7 +175,8 @@ function Install-Plus($o) {
     # build the English files from the player's own originals now (this also checks the game version)
     $report = @()
     foreach ($s in $servers) {
-        if (-not $o.English) { $report += "${s}: English off"; continue }
+        $on = if ($o.Keep) { "$($ini[$s]['english'])" -ne '0' -and (Test-Path (Join-Path $dst "english\$s\manifest.txt")) } else { $o.English }
+        if (-not $on) { $report += "${s}: English off"; continue }
         $p = Start-Process $exe -ArgumentList $s, '--prepare' -Wait -PassThru
         $log = Get-Content (Join-Path $dst "MHFZ-Plus-$s.log") -ErrorAction SilentlyContinue
         $ready = $log | Select-String 'english: (\d+) files ready.*, (\d+) left out' | Select-Object -Last 1
@@ -283,6 +293,32 @@ $prevIni = Read-Ini (Join-Path $defaultTarget 'MHFZ-Plus.ini')
 $mezeFound = if ($MezeDir) { $MezeDir } elseif ($prevIni.Contains('meze')) { $prevIni['meze']['game'] } else { try { Find-MezeDir } catch { '' } }
 $rainFound = if ($RainDir) { $RainDir } elseif ($prevIni.Contains('rain')) { Split-Path $prevIni['rain']['game'] } else { try { Find-RainDir } catch { '' } }
 $prevVersion = if (Test-Path (Join-Path $defaultTarget 'MHFZ-Plus.exe')) { $v = Get-Content (Join-Path $defaultTarget 'version.txt') -ErrorAction SilentlyContinue | Select-Object -First 1; if ($v) { $v } else { 'earlier' } } else { '' }
+
+if ($Update) {
+    # the in-app update: this install as it is - its games and every choice, its shortcuts and Steam entries - gets the
+    # new program files. MHFZ Plus closed itself to let it; it opens again after, also when this failed.
+    $fail = $null
+    try {
+        if (-not ($prevIni.Contains('meze') -or $prevIni.Contains('rain'))) { throw "There is no MHFZ Plus install in $defaultTarget to update." }
+        if (-not $Test) { for ($i = 0; $i -lt 80 -and (Get-Process -Name 'MHFZ-Plus-App' -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 250 } }
+        $deskDir = if ($LinkDir) { Join-Path $LinkDir 'Desktop' } else { [Environment]::GetFolderPath('Desktop') }
+        $r = Install-Plus ([pscustomobject]@{ Target = $defaultTarget; Keep = $true;
+                Meze = $prevIni.Contains('meze') -and [bool](Test-MezeDir $mezeFound); MezeDir = $mezeFound;
+                Rain = $prevIni.Contains('rain') -and [bool](Test-RainDir $rainFound); RainDir = $rainFound;
+                English = $true; Fps = $true; Desktop = (Test-Path (Join-Path $deskDir 'MHFZ Plus.lnk')); Steam = $false; Dxvk = $true })
+        $r
+        "updated to $version"
+    } catch { $fail = $_.Exception.Message; "update failed: $fail" }
+    if ($fail -and -not $Test) {
+        [void][System.Windows.Forms.MessageBox]::Show("MHFZ Plus couldn't update to ${version}: $fail`n`nTo update by hand: run Install.cmd from`n$pkg", $title, 'OK', 'Warning')
+    }
+    if ($Relaunch -and -not $Test) {
+        $app = Join-Path $defaultTarget 'MHFZ-Plus-App.exe'
+        if (Test-Path $app) { Start-Process $app -WorkingDirectory $defaultTarget }
+    }
+    if ($fail) { exit 1 }
+    return
+}
 
 if ($Unattended) {
     $r = Install-Plus ([pscustomobject]@{ Target = $defaultTarget; Meze = [bool](Test-MezeDir $mezeFound); MezeDir = $mezeFound;

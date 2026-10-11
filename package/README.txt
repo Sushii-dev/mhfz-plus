@@ -1,4 +1,4 @@
-MHFZ Plus 1.4.2
+MHFZ Plus 1.4.3
 ===============
 
 English translation and high frame rate for Monster Hunter Frontier Z, on the MezeLounge and Rain servers.
@@ -31,6 +31,11 @@ INSTALL
      If you choose Steam, Steam closes for a moment and starts again.
 
 Install.cmd can be run again any time to change options, move folders or update to a new version.
+
+Updates: when a new version is out, MHFZ Plus says so (once a day it asks GitHub; Settings > MHFZ Plus can turn
+that off). Press "Update now": it downloads the new version from this project's GitHub page, checks it against the
+checksum GitHub lists for it, installs it and opens again, in about a minute. Every choice stays as it is (games,
+English, frame rate, graphics backend, shortcuts, Steam entries). Nothing updates without that press.
 
 
 PLAY
@@ -176,6 +181,8 @@ like the game), with Play, Settings and Help.
   * If the frame-rate mod doesn't start under Lutris or Bottles, turn DXVK on for the game there and try again.
   * If the frame rate stays at 60 on a faster monitor, set "Frame rate" in the settings to your refresh rate.
   * Steam: setup closes Steam for a moment to add the games, like on Windows.
+  * Updates: "Update now" in the app works here too (the Linux tool does it outside Wine), or run
+    mhfz-plus update  in a terminal.
 Uninstall: "Uninstall MHFZ Plus" in the menu, or sh uninstall.sh in the package folder. It puts the original
 files back and removes the Wine setting, the menu and Steam entries and the MHFZ Plus folder.
 

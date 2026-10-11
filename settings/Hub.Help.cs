@@ -109,7 +109,7 @@ namespace MhfzPlus
         }
         void CheckUpdate(bool manual)
         {
-            if (checking) return;
+            if (checking || updating) return;   // (an update under way keeps its message)
             if (!manual) {
                 DateTime last;
                 if (DateTime.TryParse(IniGet("general", "last_update_check", ""), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out last) &&
@@ -144,8 +144,11 @@ namespace MhfzPlus
                         }
                         if (manual) {
                             if (tag == null) ShowToast("Couldn't check for updates", err ?? "No answer from GitHub.", true);
-                            else if (Newer(latest)) { var t = ShowToast("MHFZ Plus " + latest + " is out", "You have " + version + ". Download the new version and run Install.cmd: your settings stay.", false); t.Buttons.Add(new KeyValuePair<string, Action>("Download", () => OpenUrl(latestUrl))); }
+                            else if (Newer(latest)) OfferUpdate();
                             else ShowToast("Up to date", "MHFZ Plus " + version + " is the newest version.", false);
+                        } else if (Newer(latest) && IniGet("general", "offered_version", "") != latest && toast == null) {
+                            IniPut("general", "offered_version", latest);   // (once per version; the footer keeps saying it)
+                            OfferUpdate();
                         }
                         Invalidate();
                     }));

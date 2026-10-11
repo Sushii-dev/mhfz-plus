@@ -9,6 +9,7 @@
 #   mhfz-plus folder                    the MHFZ Plus folder (settings and logs) in the file manager
 #   mhfz-plus restore                   original game files back, frame-rate mod out
 #   mhfz-plus uninstall [--yes]         remove MHFZ Plus from every prefix it was installed in
+#   mhfz-plus update                    the newest release from GitHub (checked against GitHub's SHA-256), every choice kept
 # (mhfz-plus = ~/.local/share/mhfz-plus/mhfz-plus once installed; sh uninstall.sh in the package does the same)
 import argparse
 import hashlib
@@ -22,6 +23,8 @@ import subprocess
 import sys
 import time
 import urllib.parse
+import urllib.request
+import zipfile
 import zlib
 
 HOME = os.path.expanduser('~')
@@ -32,6 +35,7 @@ STATE = os.path.join(DATA, 'installs.json')
 WRAPPER = os.path.join(DATA, 'mhfz-plus')
 ICON = os.path.join(DATA, 'mhfz-plus.png')
 APPS = os.path.join(XDG_DATA, 'applications')
+XDG_CACHE = os.environ.get('XDG_CACHE_HOME') or os.path.join(HOME, '.cache')
 HERE = os.path.dirname(os.path.abspath(__file__))
 PKG = os.path.dirname(os.path.dirname(HERE))       # the extracted package (payload/ next to setup/), when run from it
 SERVERS = ('meze', 'rain')
@@ -39,6 +43,8 @@ NAMES = {'meze': 'MHF-Z MezeLounge (Plus)', 'rain': 'MHF-Z Rain (Plus)'}
 LONG = {'meze': 'MezeLounge', 'rain': 'Rain'}
 GAME_EXE = {'meze': 'mhf.exe', 'rain': 'client.exe'}   # the programs that load d3d9.dll (Wine override per program)
 TITLE = 'MHFZ Plus setup'
+REPO = 'https://github.com/Sushii-dev/mhfz-plus'
+LATEST_API = 'https://api.github.com/repos/Sushii-dev/mhfz-plus/releases/latest'
 RISK = ('Private servers may treat mods as cheating: use at your own risk. Your game files are only changed while you '
         'play through MHFZ Plus, and "MHFZ Plus: put the original game files back" in your menu undoes everything.')
 
@@ -520,8 +526,10 @@ def steam_command(root):
 
 
 def processes():
+    # (not this one, nor the update that started it: both were started from Wine, so they carry its WINEPREFIX)
+    skip = (str(os.getpid()), os.environ.get('MHFZPLUS_UPDATER', ''))
     for pid in listdir('/proc'):
-        if pid.isdigit() and pid != str(os.getpid()):
+        if pid.isdigit() and pid not in skip:
             yield pid
 
 
@@ -1344,33 +1352,51 @@ def version_of(pkg_or_target):
 
 
 # ------------------------------------------------------------------------------------------------ install
-def install_prefix(setup, games, opts, old, report):
-    """MHFZ Plus into one prefix for the games found there ({server: Linux folder})."""
+def backend_of(path):
+    try:
+        with open(path, 'rb') as f:
+            lines = f.read().decode('utf-8-sig', 'replace').splitlines()
+    except OSError:
+        return ''
+    return next((l.split('=', 1)[1].strip() for l in lines if re.match(r'^\s*d3d9_backend\s*=', l)), '')
+
+
+def install_prefix(setup, games, opts, old, report, keep=False):
+    """MHFZ Plus into one prefix for the games found there ({server: Linux folder}). keep (the in-app update): the
+    player's choices stay - the server, English and frame rate per game, the graphics backend (a public download has
+    no English data, and writing its "English off" would switch off a translation someone has)."""
     prefix = setup['prefix']
     target = old['target'] if old and os.path.isdir(old['target']) else target_of(prefix)
     payload = os.path.join(PKG, 'payload')
     os.makedirs(target, exist_ok=True)
+    tpl = os.path.join(target, 'fps', 'mhfz-fps.ini')   # (the default mod settings: new, with the backend they had)
+    kept_backend = backend_of(tpl) if keep else ''
     shutil.copytree(payload, target, dirs_exist_ok=True)
+    if kept_backend:
+        set_backend(tpl, kept_backend)
     old_settings = child(target, 'MHFZ-Plus-Settings.exe')   # (1.3 and older: now the MHFZ Plus app)
     if old_settings:
         os.remove(old_settings)
 
     ini_path = os.path.join(target, 'MHFZ-Plus.ini')
     ini = ini_read(ini_path)
-    ini.setdefault('general', {})['server'] = sorted(games, key=SERVERS.index)[0]
+    gen = ini.setdefault('general', {})
+    if not (keep and gen.get('server')):
+        gen['server'] = sorted(games, key=SERVERS.index)[0]
     # (the app, running in Wine, hands bug reports and uninstalling to this script: where it is, as Wine sees it)
     ini.setdefault('linux', {})['tool'] = to_windows(prefix, WRAPPER)
     for s, game in games.items():
         sec = ini.setdefault(s, {})
         sec['game'] = to_windows(prefix, game if s == 'meze' else sub(game, 'Client'))
-        sec['english'] = str(int(opts['english']))
-        sec['fps'] = str(int(opts['fps']))
+        for k in ('english', 'fps'):
+            if not (keep and k in sec):
+                sec[k] = str(int(opts[k]))
         sec.setdefault('fps_mode', 'stay' if s == 'meze' else 'swap')
     ini_write(ini_path, ini)
 
     # graphics backend: the DXVK that comes with MHFZ Plus, in the default settings and each game's own
     dxvk = os.path.join(target, 'fps', 'dxvk', 'd3d9.dll')
-    if opts['fps'] and os.path.isfile(dxvk):
+    if opts['fps'] and not keep and os.path.isfile(dxvk):
         files = [os.path.join(target, 'fps', 'mhfz-fps.ini'), new_path(target, 'fps-state/rain/mhfz-fps.ini')]
         if 'meze' in games:
             files.append(child(games['meze'], 'mhfz-fps.ini') or '')
@@ -1380,7 +1406,9 @@ def install_prefix(setup, games, opts, old, report):
 
     # the English files from the player's own originals (this also checks the game version)
     for s, game in games.items():
-        if not opts['english']:
+        on = ini[s].get('english') != '0' and os.path.isfile(os.path.join(target, 'english', s, 'manifest.txt')) \
+            if keep else opts['english']
+        if not on:
             report.append('%s: English off' % LONG[s])
             continue
         ready, left = prepare_english(target, s, game if s == 'meze' else sub(game, 'Client'))
@@ -1402,7 +1430,58 @@ def install_prefix(setup, games, opts, old, report):
             'servers': dict(games), 'reg': reg}
 
 
+def install_tool():
+    """This script, its icon and a launcher for the menu entries."""
+    os.makedirs(DATA, exist_ok=True)
+    shutil.copy2(os.path.abspath(__file__), os.path.join(DATA, 'mhfzplus.py'))
+    if os.path.isfile(os.path.join(HERE, 'mhfz-plus.png')):
+        shutil.copy2(os.path.join(HERE, 'mhfz-plus.png'), ICON)
+    write_file(WRAPPER, b'#!/bin/sh\n# MHFZ Plus for Linux (see mhfzplus.py)\nexec python3 "$(dirname "$(readlink -f "$0")")/mhfzplus.py" "$@"\n')
+    os.chmod(WRAPPER, 0o755)
+
+
+def install_update(ui):
+    """install --update (the in-app update, from mhfz-plus update): every install as it is - its prefix, games and
+    choices - gets this package's program files. Menu entries, desktop entries and Steam entries stay as they are
+    (they start ~/.local/share/mhfz-plus/mhfz-plus, which stays where it is)."""
+    title = 'Update MHFZ Plus'
+    st = load_state()
+    if not st['installs']:
+        ui.error('MHFZ Plus is not installed here: run install.sh for the first install.', title)
+        return 1
+    for inst in st['installs']:
+        if prefix_in_use(inst['prefix']):
+            ui.error('Something is still running in %s (the game, its launcher or MHFZ Plus). Close it, then update '
+                     'again. Nothing was changed.' % inst['label'], title)
+            return 1
+    version = version_of(PKG)
+    report, installs = [], []
+    for old in st['installs']:
+        games = {s: d for s, d in old['servers'].items() if (is_meze_dir(d) if s == 'meze' else is_rain_dir(d))}
+        for s in old['servers']:
+            if s not in games:
+                report.append('%s: its game folder is gone (%s) - left as it was' % (LONG[s], short(old['servers'][s])))
+        if not games:
+            installs.append(old)
+            continue
+        try:
+            inst = install_prefix(old, games, {'fps': True, 'english': True, 'dxvk': True}, old, report, keep=True)
+        except OSError as e:
+            ui.error('The update failed in %s: %s\n\nRun install.sh from the new version to update by hand.' % (old['label'], e), title)
+            return 1
+        inst['servers'] = dict(old['servers'], **inst['servers'])
+        installs.append(inst)
+    install_tool()
+    save_state({'version': version, 'installs': installs, 'entries': st.get('entries', [])})
+    for i in installs:
+        write_file(os.path.join(i['target'], 'install-report.txt'), ('\n'.join(report) + '\n').encode('utf-8'))
+    print('\n'.join(report + ['updated to %s' % version]))
+    return 0
+
+
 def cmd_install(a):
+    if a.update:
+        return install_update(UI.make(True))
     ui = UI.make(a.unattended, a.terminal)
     if ui.mode == 'none' and not a.unattended:   # (started without a terminal, and no zenity for a window)
         ui.error('Run install.sh in a terminal (or install zenity for the setup window).')
@@ -1533,13 +1612,7 @@ def cmd_install(a):
             if i['servers']:
                 installs.append(i)
 
-    # this script, its icon and a launcher for the menu entries
-    os.makedirs(DATA, exist_ok=True)
-    shutil.copy2(os.path.abspath(__file__), os.path.join(DATA, 'mhfzplus.py'))
-    if os.path.isfile(os.path.join(HERE, 'mhfz-plus.png')):
-        shutil.copy2(os.path.join(HERE, 'mhfz-plus.png'), ICON)
-    write_file(WRAPPER, b'#!/bin/sh\n# MHFZ Plus for Linux (see mhfzplus.py)\nexec python3 "$(dirname "$(readlink -f "$0")")/mhfzplus.py" "$@"\n')
-    os.chmod(WRAPPER, 0o755)
+    install_tool()
     for old_entry in st.get('entries', []):
         if os.path.basename(old_entry).startswith('mhfz-plus') and os.path.exists(old_entry):
             os.remove(old_entry)
@@ -1830,6 +1903,116 @@ def cmd_restore(a):
     return 0
 
 
+# ------------------------------------------------------------------------------------------------ update
+def version_tuple(v):
+    return tuple(int(x) for x in v.split('.')) if isinstance(v, str) and re.match(r'^\d+(\.\d+){0,3}$', v) else None
+
+
+def read_release(text):
+    """GitHub's answer for the newest release -> (version, zip address, SHA-256, size). ValueError with a plain reason
+    when there is nothing (safe) to download: the zip only from this project's release page, with GitHub's checksum."""
+    try:
+        rel = json.loads(text)
+    except ValueError:
+        raise ValueError("GitHub's answer could not be read.")
+    tag = rel.get('tag_name') if isinstance(rel, dict) else None
+    tag = tag[1:] if isinstance(tag, str) and tag.startswith('v') else tag
+    if not version_tuple(tag):
+        raise ValueError("GitHub's answer has no version in it.")
+    want = 'MHFZ-Plus-%s.zip' % tag
+    for x in rel.get('assets') or []:
+        if not isinstance(x, dict) or x.get('name') != want:
+            continue
+        url, digest = x.get('browser_download_url'), x.get('digest')
+        if not isinstance(url, str) or not url.startswith(REPO + '/releases/download/') or re.search(r'[\s"\\]', url):
+            raise ValueError("The download isn't on this project's release page, so it isn't used.")
+        if not isinstance(digest, str) or not re.match(r'^sha256:[0-9a-fA-F]{64}$', digest):
+            raise ValueError("GitHub lists no checksum for the download, so it couldn't be checked: update by hand.")
+        return tag, url, digest[7:].lower(), int(x.get('size') or 0)
+    raise ValueError('The release has no %s.' % want)
+
+
+def fetch_update(current, work):
+    """The newest release, downloaded into work, checked and unpacked -> (version, its mhfzplus.py), or (version,
+    None) when it isn't newer than current. ValueError / OSError with a plain reason otherwise."""
+    head = {'User-Agent': 'MHFZ-Plus/%s (Linux)' % current}
+    with urllib.request.urlopen(urllib.request.Request(LATEST_API, headers=head), timeout=15) as r:
+        tag, url, sha, size = read_release(r.read(4 << 20).decode('utf-8', 'replace'))
+    if version_tuple(current) and version_tuple(tag) <= version_tuple(current):
+        return tag, None
+    shutil.rmtree(work, ignore_errors=True)
+    os.makedirs(work)
+    zpath = os.path.join(work, 'MHFZ-Plus-%s.zip' % tag)
+    h = hashlib.sha256()
+    with urllib.request.urlopen(urllib.request.Request(url, headers=head), timeout=30) as r, open(zpath, 'wb') as f:
+        while True:
+            b = r.read(1 << 16)
+            if not b:
+                break
+            f.write(b)
+            h.update(b)
+    if h.hexdigest() != sha:
+        raise ValueError("The download doesn't match GitHub's checksum (damaged on the way?), so nothing was changed.")
+    pkg = os.path.join(work, 'pkg')
+    try:
+        with zipfile.ZipFile(zpath) as z:
+            for n in z.namelist():
+                if n.startswith('/') or '\\' in n or ':' in n or '..' in n.split('/'):
+                    raise ValueError("The download has a file with a strange name in it (%s), so it isn't used." % n)
+            z.extractall(pkg)
+    except zipfile.BadZipFile:
+        raise ValueError('The download is not a zip file.')
+    tools = [os.path.join(pkg, d, 'setup', 'linux', 'mhfzplus.py') for d in listdir(pkg)]
+    tool = next((t for t in tools if os.path.isfile(t)), None)
+    if not tool:
+        raise ValueError('The download has no Linux setup in it.')
+    return tag, tool
+
+
+def cmd_update(a):
+    """The newest MHFZ Plus from GitHub, installed over every install with each choice kept (the app's Update now:
+    --wait for the app and its Wine to close, --relaunch to open the app again after, also when it failed)."""
+    ui = UI.make(a.unattended)
+    title = 'Update MHFZ Plus'
+    st = load_state()
+    if not st['installs']:
+        ui.error('MHFZ Plus is not installed.', title)
+        return 1
+    if a.wait:   # (started from the MHFZ Plus app, which closes itself: give it and its Wine time to go)
+        for _ in range(40):
+            if not any(prefix_in_use(i['prefix']) for i in st['installs']):
+                break
+            time.sleep(1)
+    current = st.get('version', '')
+    work = os.path.join(XDG_CACHE, 'mhfz-plus-update')
+    rc = 1
+    try:
+        tag, tool = fetch_update(current, work)
+        if not tool:
+            ui.info('MHFZ Plus %s is already the newest version.' % current, title)
+            rc = 0
+        else:
+            env = dict(os.environ, MHFZPLUS_UPDATER=str(os.getpid()))
+            p = subprocess.run([sys.executable, '-I', tool, 'install', '--update'], env=env, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, universal_newlines=True)
+            print(p.stdout, end='')
+            rc = p.returncode
+    except (OSError, ValueError) as e:
+        why = getattr(e, 'reason', None) or e
+        ui.error("MHFZ Plus couldn't update: %s\n\nMHFZ Plus is as it was. To update by hand: download the new version "
+                 "from %s/releases/latest and run sh install.sh." % (why, REPO), title)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    if a.relaunch:
+        st = load_state()
+        if st['installs']:
+            env = {k: v for k, v in os.environ.items() if not k.startswith('WINE')}   # (this ran from Wine: a clean start)
+            first = sorted(st['installs'][0]['servers'], key=SERVERS.index)[0]
+            subprocess.Popen([sys.executable, os.path.join(DATA, 'mhfzplus.py'), 'app', first], env=env, cwd=HOME,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    return rc
+
+
 def cmd_uninstall(a):
     ui = UI.make(a.unattended or a.yes)
     title = 'Uninstall MHFZ Plus'
@@ -1915,6 +2098,7 @@ def main(argv=None):
     i.add_argument('--only-prefix', help='only this Wine prefix')
     for o in ('fps', 'english', 'dxvk', 'desktop', 'steam'):
         i.add_argument('--no-' + o, action='store_true')
+    i.add_argument('--update', action='store_true', help='the in-app update: every install gets these files, each choice kept')
     p = sp.add_parser('play', help='start the game through MHFZ Plus')
     p.add_argument('server', choices=SERVERS)
     for name in ('app', 'settings'):   # (settings: the name before 1.4)
@@ -1928,13 +2112,17 @@ def main(argv=None):
     u = sp.add_parser('uninstall')
     u.add_argument('--yes', action='store_true', help='no questions')
     u.add_argument('--wait', action='store_true', help='wait for the game prefixes to be idle first (from the app)')
+    w = sp.add_parser('update', help="the newest MHFZ Plus from GitHub (checked against GitHub's SHA-256), every choice kept")
+    w.add_argument('--wait', action='store_true', help='wait for the game prefixes to be idle first (from the app)')
+    w.add_argument('--relaunch', action='store_true', help='open the MHFZ Plus app again after')
+    w.add_argument('--unattended', action='store_true', help='no questions or windows')
     a = ap.parse_args(argv)
     a.unattended = getattr(a, 'unattended', False)
     if not a.cmd:
         ap.print_help()
         return 2
     return {'install': cmd_install, 'play': cmd_play, 'app': cmd_app, 'settings': cmd_app, 'folder': cmd_folder,
-            'restore': cmd_restore, 'report': cmd_report, 'uninstall': cmd_uninstall}[a.cmd](a)
+            'restore': cmd_restore, 'report': cmd_report, 'uninstall': cmd_uninstall, 'update': cmd_update}[a.cmd](a)
 
 
 if __name__ == '__main__':

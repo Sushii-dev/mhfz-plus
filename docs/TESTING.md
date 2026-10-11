@@ -67,7 +67,9 @@ The Python scripts in `tools\` read dumps and clips (`ghosts.py`, `flickerscan.p
 - `tools\apptest.ps1` (no window, any time): on a made-up install in `%TEMP%` with fake game folders, renders every
   page and moments of the animations off-screen (`--shots`) and times a frame (under 40 ms at 150%), then checks
   inside the app: the icon in every size, the chosen server remembered (and Settings following it), only web pages
-  opened, the update check offering only this project's release pages.
+  opened, the update check offering only this project's release pages. The update: GitHub's answer is read only
+  for this project's release zip with GitHub's SHA-256 (another site, no or a bad checksum, no zip: refused), the
+  download's hash is checked, setup gets the install folder intact (spaces, a last `\`), "Updated to" after it.
 
 ## Launcher and installer
 
@@ -77,10 +79,14 @@ The Python scripts in `tools\` read dumps and clips (`ghosts.py`, `flickerscan.p
   `-OtherClient`: another program called client.exe runs from elsewhere the whole time (it must be "left out", and
   the session must still end with the real game).
 - `tools\installtest.ps1` installs the release zip as a player would (into a temporary folder, with a copy of the
-  Steam configuration), plays both simulated servers, reinstalls and uninstalls; it also checks that a Steam
-  shortcuts file of a layout we don't know is refused and left byte for byte as it was.
+  Steam configuration), plays both simulated servers, reinstalls, updates in place as the app's Update now does
+  (`-Update`: English off, the chosen server, app options, the graphics backend, desktop shortcut and Steam entries
+  must all stay) and uninstalls; it also checks that a Steam shortcuts file of a layout we don't know is refused and
+  left byte for byte as it was. `-NoPlay` leaves out the two game sessions (they open windows).
 - `tools/linuxtest.sh` does the same on Linux (or in WSL), with Wine and every window in a virtual screen: `install.sh`
   from the unzipped release against a simulated Steam (Proton) setup and a Lutris / plain Wine setup, an update
-  install, both servers played under Wine, the frame-rate mod with the test app on DXVK and on Wine's own Direct3D,
+  install, `mhfz-plus update` with every choice kept (the package standing in for the download; GitHub's answer
+  checked as on Windows, and the newest release really downloaded and checked when there is internet), both servers
+  played under Wine, the frame-rate mod with the test app on DXVK and on Wine's own Direct3D,
   restore and uninstall (the prefixes' registry and Steam's files must end up as they were). Needs `wine` with 32-bit
   support, `xvfb-run`, `python3` and `unzip`; 32-bit Vulkan drivers (Mesa's lavapipe will do) for the DXVK part.
