@@ -116,9 +116,12 @@ static bool WriteAll(const wstr& p, const std::vector<uint8_t>& data) {
         ok = WriteFile(h, data.data() + done, want, &put, nullptr) && put;
         done += put;
     }
+    // on the disk before the name points at it: a backup can be the only copy of an original game file, and a power
+    // cut right after writing must not leave an empty one (only first runs and patch updates write these)
+    if (ok) ok = FlushFileBuffers(h) != 0;
     CloseHandle(h);
     if (!ok) { DeleteFileW(tmp.c_str()); return false; }
-    return MoveFileExW(tmp.c_str(), p.c_str(), MOVEFILE_REPLACE_EXISTING);
+    return MoveFileExW(tmp.c_str(), p.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
 }
 // Copies with retries (the game or its launcher may hold the file for a moment).
 static bool CopyRetry(const wstr& src, const wstr& dst, int tries = 40) {
@@ -176,20 +179,91 @@ static std::string FileSha256(const wstr& p) {
 }
 
 // ------------------------------------------------------------------------------------------------ processes
-static bool AnyRunning(const std::vector<wstr>& names) {
+// A path as the file system really has it (junctions, subst drives and 8.3 names resolved), lower case, without
+// the \\?\ prefix; empty if it can't be told.
+static wstr FinalPath(const wstr& p) {
+    HANDLE h = CreateFileW(p.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+                           FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return wstr();
+    wchar_t buf[MAX_PATH * 4];
+    DWORD n = GetFinalPathNameByHandleW(h, buf, MAX_PATH * 4, FILE_NAME_NORMALIZED);
+    CloseHandle(h);
+    if (!n || n >= MAX_PATH * 4) return wstr();
+    wstr r(buf, n);
+    if (r.rfind(L"\\\\?\\UNC\\", 0) == 0) r = L"\\\\" + r.substr(8);
+    else if (r.rfind(L"\\\\?\\", 0) == 0) r = r.substr(4);
+    for (auto& c : r) c = towlower(c);
+    return r;
+}
+// Rain's game is client.exe - a name other programs have too. A process of that name counts only if its program is
+// in the game folder (where d3d9.dll goes, so the client is always there), or if where it is can't be told.
+// (Launchers are matched by name only: one may restart itself from somewhere else to update.)
+static wstr g_clientName;
+static std::vector<wstr> g_homes;
+static bool AtHome(DWORD pid) {
+    if (g_homes.empty()) return true;
+    HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!p) return true;  // (can't be told: it counts, as it always did)
+    wchar_t buf[MAX_PATH * 4];
+    DWORD n = MAX_PATH * 4;
+    bool got = QueryFullProcessImageNameW(p, 0, buf, &n) != 0;
+    CloseHandle(p);
+    if (!got) return true;
+    wstr exe = FinalPath(wstr(buf, n));
+    if (exe.empty()) return true;
+    for (const wstr& home : g_homes)
+        if (exe.size() > home.size() && exe.compare(0, home.size(), home) == 0 && exe[home.size()] == L'\\') return true;
+    static std::vector<wstr> told;  // (said once per program)
+    if (std::find(told.begin(), told.end(), exe) == told.end()) {
+        told.push_back(exe);
+        Log(L"not the game, left out: %ls", exe.c_str());
+    }
+    return false;
+}
+// the first running process with one of these names (0: none)
+static DWORD FindPid(const std::vector<wstr>& names) {
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (snap == INVALID_HANDLE_VALUE) return false;
+    if (snap == INVALID_HANDLE_VALUE) return 0;
     PROCESSENTRY32W pe;
     pe.dwSize = sizeof pe;
-    bool found = false;
+    DWORD found = 0;
     for (BOOL ok = Process32FirstW(snap, &pe); ok && !found; ok = Process32NextW(snap, &pe)) {
         wstr exe = pe.szExeFile;
         size_t dot = exe.find_last_of(L'.');
         wstr stem = dot == wstr::npos ? exe : exe.substr(0, dot);
-        for (const wstr& n : names) if (_wcsicmp(stem.c_str(), n.c_str()) == 0) { found = true; break; }
+        // (a process that has ended but is still held open - by us, by its launcher - has no threads: not running)
+        for (const wstr& n : names)
+            if (pe.cntThreads > 0 && _wcsicmp(stem.c_str(), n.c_str()) == 0 &&
+                (g_clientName.empty() || _wcsicmp(n.c_str(), g_clientName.c_str()) != 0 || AtHome(pe.th32ProcessID))) { found = pe.th32ProcessID; break; }
     }
     CloseHandle(snap);
     return found;
+}
+static bool AnyRunning(const std::vector<wstr>& names) { return FindPid(names) != 0; }
+
+// The game's process, held while it runs: when it ends, its exit code tells a crash (an exception's code,
+// 0xC0000005 and the like) from quitting (MezeLounge 0, Rain's client 102...). A crash is logged ("game crashed"),
+// so MHFZ Plus can say so and offer a bug report.
+struct GameWatch {
+    HANDLE h = nullptr;
+    void See(DWORD pid) {
+        if (!h && pid) h = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    }
+    // after the game is gone: true (and the code) if it crashed
+    bool Crashed(DWORD& code) {
+        if (!h) return false;
+        bool crashed = false;
+        if (WaitForSingleObject(h, 0) == WAIT_OBJECT_0 && GetExitCodeProcess(h, &code)) crashed = code >= 0xC0000000u;
+        CloseHandle(h);
+        h = nullptr;
+        return crashed;
+    }
+    // the process held has ended (another one of the same name may be running: MezeLounge's launcher becomes the game)
+    bool Ended() { return h && WaitForSingleObject(h, 0) == WAIT_OBJECT_0; }
+};
+static void LogCrash(GameWatch& w) {
+    DWORD code = 0;
+    if (w.Crashed(code)) Log(L"game crashed (exception %08x)", code);
 }
 static std::vector<wstr> SplitList(const wstr& s) {
     std::vector<wstr> out;
@@ -440,6 +514,13 @@ static int ApplyEnglish(const Profile& pr) {
     return ok;
 }
 // align: also copy over originals that only differ in timestamp, so later checks need no hashing
+// A backup goes back into the game only if it is still exactly the original (a damaged one - a disk error - would
+// break the game; the English file stays then, and the game's own launcher can repair it). ~0.1 s for all of them.
+static bool BackupGood(const wstr& bak, const PatchFile& pf) {
+    if (StampOf(bak).size == pf.origSize && FileSha256(bak) == pf.origHash) return true;
+    Log(L"english: the backup of %ls is damaged - the game file is left as it is (the game's launcher can repair it)", pf.rel.c_str());
+    return false;
+}
 static int RestoreOriginals(const Profile& pr, bool all, bool align = false) {
     int ok = 0;
     if (all && g_files.empty()) LoadManifest(pr.name);
@@ -452,6 +533,7 @@ static int RestoreOriginals(const Profile& pr, bool all, bool align = false) {
             Log(L"english: %ls is %ls - not touched", pf.rel.c_str(), st == F_MISSING ? L"missing" : L"a version we don't know (game update?)");
             continue;
         }
+        if (!BackupGood(bak, pf)) continue;
         if (CopyRetry(bak, dst)) ok++;
         else Log(L"english: could not put back %ls (file locked)", pf.rel.c_str());
     }
@@ -567,7 +649,7 @@ static void RestoreUnused(const Profile& pr) {
         bool used = false;
         for (const PatchFile& r : g_ready) used |= r.rel == pf.rel;
         wstr bak = Join(g_base, L"backup\\" + pr.name + L"\\" + pf.rel);
-        if (!used && Exists(bak) && StateOf(pr, pf) == F_ENGLISH && CopyRetry(bak, Join(pr.game, pf.rel)))
+        if (!used && Exists(bak) && StateOf(pr, pf) == F_ENGLISH && BackupGood(bak, pf) && CopyRetry(bak, Join(pr.game, pf.rel)))
             Log(L"english: %ls not used this time - original put back", pf.rel.c_str());
     }
 }
@@ -583,8 +665,16 @@ static int RunMeze(const Profile& pr, bool english) {
     Sleep(500);
     DWORD lastSeen = GetTickCount();
     std::map<wstr, DWORD> unknownSince;  // files in an unknown state, since when
+    GameWatch game;
     while (true) {
-        if (AnyRunning(pr.procs)) lastSeen = GetTickCount();
+        // the process held is waited on; a process list (~1 ms) only when it has ended: the launcher becomes the game,
+        // so the next one of the name is held from then on
+        bool alive = game.h && !game.Ended();
+        if (!alive) {
+            if (game.Ended()) LogCrash(game);
+            if (DWORD pid = FindPid(pr.procs)) { game.See(pid); alive = true; }
+        }
+        if (alive) lastSeen = GetTickCount();
         else if (GetTickCount() - lastSeen > 15000) break;
         if (english) {
             // the launcher put originals back (at login): wait until it has stopped writing, then put all English
@@ -637,6 +727,7 @@ static int RunRain(const Profile& pr, bool english, bool attach) {
     int passes = 0, fails = 0;
     wstr lastBad;
     bool inGame = false, everInGame = false;
+    GameWatch game;
     auto applyAll = [&](const wchar_t* why) {
         DWORD a = GetTickCount();
         bool mod = pr.fps && pr.fpsSwap ? PutFpsMod(pr) : false;  // first: the game loads it before any text
@@ -669,25 +760,33 @@ static int RunRain(const Profile& pr, bool english, bool attach) {
         Log(L"originals in place, started %ls - press Play as usual", pr.start.c_str());
     }
     DWORD lastSeen = GetTickCount();
-    while (true) {
+    for (unsigned tick = 0;; tick++) {
+        // the launcher's log every 10 ms while it may pass its check (the English files have to be in before the
+        // game reads them), 4 times a second while the game runs
         int p = passes, f = fails;
         ScanLauncherLog(pr.launcherLogs, t0, p, f, lastBad);
         if (p > passes) { passes = p; applyAll(L"launcher check passed"); }
         if (f > fails) { fails = f; Log(L"LAUNCHER CHECK FAILED: %ls", lastBad.c_str()); }
-        if (AnyRunning({pr.client})) {
-            if (!inGame) Log(L"game started");
-            inGame = true;
-        } else if (inGame) {
-            inGame = false;
-            restoreAll();
-            Log(L"game closed -> originals restored");
+        // the processes 10 times a second at most: a process list costs ~1 ms (two of them 100 times a second took a
+        // fifth of a CPU core while the launcher and the game started, and ~10% of one through the whole session)
+        if (inGame || tick % 10 == 0) {
+            if (DWORD cpid = FindPid({pr.client})) {
+                game.See(cpid);
+                if (!inGame) Log(L"game started");
+                inGame = true;
+            } else if (inGame) {
+                inGame = false;
+                LogCrash(game);
+                restoreAll();
+                Log(L"game closed -> originals restored");
+            }
+            // done once nothing runs any more: after a game, 10 s (Steam shows "running" until then); before the game
+            // started, a minute (a launcher may restart itself to update)
+            if (AnyRunning(pr.procs)) lastSeen = GetTickCount();
+            else if (GetTickCount() - lastSeen > (everInGame ? 10000u : 60000u)) break;
+            everInGame |= inGame;
         }
-        // done once nothing runs any more: after a game, 10 s (Steam shows "running" until then); before the game
-        // started, a minute (a launcher may restart itself to update)
-        if (AnyRunning(pr.procs)) lastSeen = GetTickCount();
-        else if (GetTickCount() - lastSeen > (everInGame ? 10000u : 60000u)) break;
-        everInGame |= inGame;
-        Sleep(10);
+        Sleep(inGame ? 250 : 10);
     }
     restoreAll();
     Log(L"launcher closed, originals in place");
@@ -707,12 +806,30 @@ static void OpenLog(const wstr& name) {
     MoveFileExW(log.c_str(), Join(g_base, L"MHFZ-Plus-" + name + L".prev.log").c_str(), MOVEFILE_REPLACE_EXISTING);
     g_log = _wfopen(log.c_str(), L"w, ccs=UTF-8");
 }
-static const wchar_t* kVersion = L"1.3";
+// which client.exe is the game: the one in the game folder (see AtHome)
+static void WatchClient(const Profile& pr) {
+    g_clientName = pr.client;
+    g_homes.clear();
+    wstr home = pr.client.empty() ? wstr() : FinalPath(pr.game);
+    if (!home.empty()) g_homes.push_back(home);
+}
+// the version: version.txt next to the exe (the package writes it), so the logs can't fall behind a release
+static wstr g_version = L"1.4";
+static void ReadVersion() {
+    std::vector<uint8_t> d;
+    if (!ReadAll(Join(g_base, L"version.txt"), d)) return;
+    std::string s(d.begin(), d.end());
+    if (s.size() >= 3 && (uint8_t)s[0] == 0xEF && (uint8_t)s[1] == 0xBB && (uint8_t)s[2] == 0xBF) s = s.substr(3);
+    size_t e = s.find_first_of("\r\n");
+    if (e != std::string::npos) s = s.substr(0, e);
+    if (!s.empty() && s.size() < 32 && s.find_first_not_of("0123456789.") == std::string::npos) g_version = wstr(s.begin(), s.end());
+}
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     wchar_t exe[MAX_PATH * 4];
     GetModuleFileNameW(nullptr, exe, MAX_PATH * 4);
     g_base = Parent(exe);
+    ReadVersion();
 
     int argc = 0;
     LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
@@ -726,7 +843,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         else if (a == L"--restore") restore = true;
         else if (a == L"--prepare") prepare = true;
         else if (a == L"--attach") attach = true;
-        else if (a == L"--version") { MessageBoxW(nullptr, (L"MHFZ Plus " + wstr(kVersion)).c_str(), L"MHFZ Plus", MB_OK); return 0; }
+        else if (a == L"--version") { MessageBoxW(nullptr, (L"MHFZ Plus " + g_version).c_str(), L"MHFZ Plus", MB_OK); return 0; }
         else if (!a.empty() && a[0] != L'-') server = a;
     }
     wstr ini = Join(g_base, L"MHFZ-Plus.ini");
@@ -735,11 +852,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     // --restore all: every configured server (used by the uninstaller and the "restore" shortcut)
     if (restore && server == L"all") {
         OpenLog(L"restore");
-        Log(L"MHFZ Plus %ls: restore all", kVersion);
+        Log(L"MHFZ Plus %ls: restore all", g_version.c_str());
         int rc = 0;
         for (const wchar_t* s : {L"meze", L"rain"}) {
             Profile pr;
             if (!LoadProfile(s, pr) || !Exists(pr.game)) continue;
+            WatchClient(pr);
             HANDLE m = CreateMutexW(nullptr, TRUE, (L"MHFZ-Plus-" + wstr(s)).c_str());
             if (GetLastError() == ERROR_ALREADY_EXISTS || AnyRunning(pr.procs)) {
                 Log(L"%ls: game or MHFZ Plus still running - skipped", s);
@@ -757,12 +875,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     }
 
     OpenLog(server);
-    Log(L"MHFZ Plus %ls, server %ls", kVersion, server.c_str());
+    Log(L"MHFZ Plus %ls, server %ls", g_version.c_str(), server.c_str());
     Profile pr;
     if (!LoadProfile(server, pr)) {
         Fail(L"No game folder set for \"%ls\" in MHFZ-Plus.ini. Run Install.cmd first.", server.c_str());
         return 1;
     }
+    WatchClient(pr);
     if (noFps) pr.fps = false;
     bool english = pr.english && !noEnglish;
     if (!Exists(pr.game)) { Fail(L"Game folder not found: %ls", pr.game.c_str()); return 1; }

@@ -62,9 +62,25 @@ The Python scripts in `tools\` read dumps and clips (`ghosts.py`, `flickerscan.p
 - `stats_interval` writes a statistics line to `mhfz-fps.log`: real and shown fps, late ticks, matching rates, timings.
 - With developer keys on (`debug_keys=1`): Ctrl+Shift+1–5 switch single mechanisms on and off live, for A/B tests.
 
+## The MHFZ Plus app
+
+- `tools\apptest.ps1` (no window, any time): on a made-up install in `%TEMP%` with fake game folders, renders every
+  page and moments of the animations off-screen (`--shots`) and times a frame (under 40 ms at 150%), then checks
+  inside the app: the icon in every size, the chosen server remembered (and Settings following it), only web pages
+  opened, the update check offering only this project's release pages.
+
 ## Launcher and installer
 
 - `launcher\simtest.ps1` and `simtest2.ps1` run the launcher against simulated MezeLounge and Rain installs
-  (`launcher\fakegame.cpp`): patching, game updates, stale caches, restore.
+  (`launcher\fakegame.cpp`): patching, game updates, stale caches, restore. `simtest.ps1 -Crash`: the games end with
+  an access violation's exit code (the log must say "game crashed", the originals still come back);
+  `-OtherClient`: another program called client.exe runs from elsewhere the whole time (it must be "left out", and
+  the session must still end with the real game).
 - `tools\installtest.ps1` installs the release zip as a player would (into a temporary folder, with a copy of the
-  Steam configuration), plays both simulated servers, reinstalls and uninstalls.
+  Steam configuration), plays both simulated servers, reinstalls and uninstalls; it also checks that a Steam
+  shortcuts file of a layout we don't know is refused and left byte for byte as it was.
+- `tools/linuxtest.sh` does the same on Linux (or in WSL), with Wine and every window in a virtual screen: `install.sh`
+  from the unzipped release against a simulated Steam (Proton) setup and a Lutris / plain Wine setup, an update
+  install, both servers played under Wine, the frame-rate mod with the test app on DXVK and on Wine's own Direct3D,
+  restore and uninstall (the prefixes' registry and Steam's files must end up as they were). Needs `wine` with 32-bit
+  support, `xvfb-run`, `python3` and `unzip`; 32-bit Vulkan drivers (Mesa's lavapipe will do) for the DXVK part.

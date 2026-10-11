@@ -16,7 +16,10 @@ if (-not $Quiet) {
     if ($r -ne 'Yes') { exit 0 }
 }
 if (-not $Test -and (Get-Process -Name 'MHFZ-Plus' -ErrorAction SilentlyContinue)) { Say 'MHFZ Plus is still running. Close the game first, then try again.' 'Warning'; exit 1 }
-if (-not $Test -and (Get-Process -Name 'MHFZ-Plus-Settings' -ErrorAction SilentlyContinue)) { Say 'The MHFZ Plus settings window is open. Close it first, then try again.' 'Warning'; exit 1 }
+if (-not $Test) {   # (started from the MHFZ Plus window, which closes itself right after)
+    for ($i = 0; $i -lt 20 -and (Get-Process -Name 'MHFZ-Plus-App', 'MHFZ-Plus-Settings' -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 250 }
+    if (Get-Process -Name 'MHFZ-Plus-App', 'MHFZ-Plus-Settings' -ErrorAction SilentlyContinue) { Say 'The MHFZ Plus window is open. Close it first, then try again.' 'Warning'; exit 1 }
+}
 
 # 1. originals back, mod out (refuses while a game is running)
 $p = Start-Process $exe -ArgumentList 'all', '--restore' -Wait -PassThru
@@ -25,6 +28,8 @@ if ($p.ExitCode -ne 0 -or ($log -match 'could not put back')) {
     Say ("Could not put all original files back (is the game or its launcher still running?). Nothing was removed.`n`n" + ($log -join "`n")) 'Warning'
     exit 1
 }
+# a backup that is no longer the original isn't put back (it would break the game): said at the end, nothing to retry
+$damaged = @($log | Where-Object { $_ -match 'the backup of (.+?) is damaged' } | ForEach-Object { $Matches[1] })
 # the mod's own settings and log in the game folders (only where the mod is gone)
 $ini = Join-Path $dst 'MHFZ-Plus.ini'
 foreach ($line in Get-Content $ini -ErrorAction SilentlyContinue) {
@@ -39,8 +44,9 @@ foreach ($line in Get-Content $ini -ErrorAction SilentlyContinue) {
 
 # 2. shortcuts, Steam, registry
 if (-not $Test) {
-    $names = 'MHF-Z MezeLounge (Plus)', 'MHF-Z Rain (Plus)'
+    $names = 'MHFZ Plus', 'MHF-Z MezeLounge (Plus)', 'MHF-Z Rain (Plus)'   # (the last two: 1.3 and older)
     foreach ($n in $names) { Remove-Item (Join-Path ([Environment]::GetFolderPath('Desktop')) "$n.lnk") -Force -ErrorAction SilentlyContinue }
+    Remove-Item (Join-Path ([Environment]::GetFolderPath('Programs')) 'MHFZ Plus.lnk') -Force -ErrorAction SilentlyContinue
     Remove-Item (Join-Path ([Environment]::GetFolderPath('Programs')) 'MHFZ Plus') -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\MHFZ-Plus' -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -48,7 +54,8 @@ $cfgs = if ($SteamConfig) { $SteamConfig } elseif ($Test) { @() } else { Get-Ste
 $steamNote = ''
 foreach ($c in $cfgs) {
     if (-not (Test-Path (Join-Path $c 'shortcuts.vdf'))) { continue }
-    $has = (Read-VdfBinary ([IO.File]::ReadAllBytes((Join-Path $c 'shortcuts.vdf'))))['shortcuts'].Values | Where-Object { Test-OurShortcut $_ }
+    try { $has = (Read-ShortcutsChecked (Join-Path $c 'shortcuts.vdf'))['shortcuts'].Values | Where-Object { Test-OurShortcut $_ } }
+    catch { $steamNote = "`n`n$($_.Exception.Message) Remove the MHFZ Plus entries in Steam yourself: right-click them > Manage > Remove non-Steam game."; continue }
     if (-not $has) { continue }
     if (-not $SteamConfig -and (Get-Process -Name 'steam' -ErrorAction SilentlyContinue)) {
         $r = if ($Quiet) { 'No' } else { [System.Windows.Forms.MessageBox]::Show("Close Steam for a moment to remove the MHFZ Plus games from it?", $title, 'YesNo', 'Question') }
@@ -68,4 +75,5 @@ Set-Location $env:TEMP
 $cmd = "Start-Sleep 2; Remove-Item -LiteralPath '$($dst.Replace("'", "''"))' -Recurse -Force -ErrorAction SilentlyContinue"
 if ($Test) { Remove-Item -LiteralPath $dst -Recurse -Force }
 else { Start-Process "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList '-NoProfile', '-WindowStyle', 'Hidden', '-Command', $cmd -WindowStyle Hidden }
-Say "MHFZ Plus has been removed. Your game folders are back to the original files.$steamNote"
+$except = if ($damaged) { ", except $($damaged -join ', '): its backup was damaged, so let your game's launcher check its files (Rain: it does so by itself; MezeLounge: repair or reinstall)" } else { '' }
+Say "MHFZ Plus has been removed. Your game folders are back to the original files$except.$steamNote"

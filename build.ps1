@@ -14,9 +14,9 @@ if ($Tests) {
     $dir = if ($TestsOut) { $TestsOut } else { "$root\build" }
     New-Item -ItemType Directory -Force $dir | Out-Null
     foreach ($src in Get-ChildItem "$root\test\*.cpp") {
-        if ($src.BaseName -eq 'nullbackend') {  # (a stand-in d3d9_backend DLL, see the file)
-            & $cc --target=i686-w64-mingw32 -O2 -shared -static -s "-Wl,--kill-at" -o "$dir\nullbackend.dll" $src.FullName
-            if ($LASTEXITCODE -ne 0) { throw "nullbackend.cpp: build failed" }
+        if ($src.BaseName -like '*backend') {  # (stand-in d3d9_backend DLLs, see the files)
+            & $cc --target=i686-w64-mingw32 -O2 -shared -static -s "-Wl,--kill-at" -o "$dir\$($src.BaseName).dll" $src.FullName
+            if ($LASTEXITCODE -ne 0) { throw "$($src.Name): build failed" }
             continue
         }
         & $cc --target=i686-w64-mingw32 -O2 -std=c++20 -static -s -Wall -Wno-unused-function -Wno-format `

@@ -1,8 +1,9 @@
 # Tests the opt-in features that the test app can exercise:
 #  - input_latch: test\inputtest.exe types short F13 taps (12 ms) while a game-like 30 Hz loop reads a DirectInput
 #    keyboard once per tick; prints how many it saw with the latch off and on.
-#  - backend fallback: a d3d9_backend whose Direct3DCreate9 returns nothing (build\nullbackend.dll) must leave the game on
-#    Windows' own Direct3D 9, interpolating.
+#  - backend fallback: a d3d9_backend whose Direct3DCreate9 returns nothing (build\nullbackend.dll), and one that aborts
+#    the process in it like DXVK without a usable Vulkan (build\abortbackend.dll), must leave the game on Windows' own
+#    Direct3D 9, interpolating.
 #  - camera probe: camprobe_test=1 points the hardware write breakpoints at a variable of the mod's own (written every
 #    frame), started through camprobe_trigger while the test app runs; the log must name the writing code.
 #   tools\featuretest.ps1 [-Dll build\d3d9.dll] [-InputTest build\inputtest.exe] [-Backend ""|dxvk\d3d9.dll]
@@ -41,3 +42,9 @@ Set-Content "$w\mhfz-fps.ini" "[fps]`r`nmode=2`r`ntarget_fps=144`r`npresent_inte
 $p = Start-Process -NoNewWindow "$w\testapp.exe" -ArgumentList 4 -WorkingDirectory $w -PassThru -RedirectStandardOutput "$w\out.txt"
 "   exited cleanly: " + ($p.WaitForExit(30000) -and $p.ExitCode -eq 0)
 Get-Content "$w\mhfz-fps.log" | Where-Object { $_ -match 'could not start|stats 2s' } | Select-Object -First 2 | ForEach-Object { "   " + $_.Substring(0, [Math]::Min(150, $_.Length)) }
+"== backend that aborts while starting (like DXVK finding no Vulkan it can use)"
+Copy-Item "$b\abortbackend.dll" $w -Force
+Set-Content "$w\mhfz-fps.ini" "[fps]`r`nmode=2`r`ntarget_fps=144`r`npresent_interval=0`r`nstats_interval=2`r`nd3d9_backend=$w\abortbackend.dll`r`n"
+$p = Start-Process -NoNewWindow "$w\testapp.exe" -ArgumentList 4 -WorkingDirectory $w -PassThru -RedirectStandardOutput "$w\out.txt"
+"   exited cleanly: " + ($p.WaitForExit(30000) -and $p.ExitCode -eq 0)
+Get-Content "$w\mhfz-fps.log" | Where-Object { $_ -match 'ended itself|could not start|stats 2s' } | Select-Object -First 3 | ForEach-Object { "   " + $_.Substring(0, [Math]::Min(150, $_.Length)) }

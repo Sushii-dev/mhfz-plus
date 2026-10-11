@@ -23,7 +23,7 @@ where the mod was stuck.
 - **Run the gate:** `tools\validate.ps1 -Dll <your build> -Ref <the current release's d3d9.dll>`, and say in the
   pull request what it printed. If the pairing hash changes, explain why.
 - **New settings** go at the end of the `Config` struct in `src/fps.cpp` (offline tools copy saved configs by
-  size), with a comment, a line in `package/fps/mhfz-fps.ini`, and an entry in the settings app's schema
+  size), with a comment, a line in `package/fps/mhfz-fps.ini`, and an entry in the app's settings schema
   (`settings/Settings.cs`).
 - Match the surrounding style: plain C++, comments that explain why, measurements in comments where a constant
   came from one.

@@ -8,11 +8,11 @@ import os
 import struct
 import sys
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUILD = os.path.join(ROOT, "build")
-VERSION = (1, 3, 0, 0)
+VERSION = (1, 4, 0, 0)
 
 RT_ICON, RT_GROUP_ICON, RT_VERSION, RT_MANIFEST = 3, 14, 16, 24
 
@@ -30,36 +30,50 @@ def res_file(entries):
 
 
 # ------------------------------------------------------------------------------------------------ icon
+# The MHFZ Plus app's look (settings\Hub.cs): a gold diamond tile from its title with the red cut-paper "Z", and a red
+# diamond with a white plus (the red tag of the app's selected row). Below 32 px the plus is left out (it would be a
+# dot) and the letter is bigger; the tile's inner rings come from 32 px up.
+GLYPH_Z = "M5 4 L55 6 L56 15 L22 54 L56 52 L53 66 L4 66 L4 57 L37 17 L8 17 Z"   # (Hub.cs Ui.glyphs, on a 60x70 box)
+GOLD, GOLD_LIGHT, GOLD_DARK, GOLD_MID = (196, 165, 53), (220, 194, 90), (111, 93, 21), (159, 135, 40)
+LETTER, LETTER_DARK, RED, RED_DARK = (168, 63, 53), (94, 30, 24), (192, 48, 58), (94, 20, 22)
+
+
+def _diamond(cx, cy, r):
+    return [(cx, cy - r), (cx + r, cy), (cx, cy + r), (cx - r, cy)]
+
+
+def _outline(d, pts, color, width):
+    d.line(pts + [pts[0]], fill=color, width=max(1, round(width)), joint="curve")
+
+
+def _tile(d, cx, cy, r, letter_scale, rings):
+    d.polygon(_diamond(cx, cy, r), fill=GOLD)
+    _outline(d, _diamond(cx, cy, r), GOLD_DARK, r * 0.07)
+    if rings:
+        _outline(d, _diamond(cx, cy, r * 0.82), GOLD_LIGHT, r * 0.045)
+        _outline(d, _diamond(cx, cy, r * 0.66), GOLD_MID, r * 0.045)
+    sc = r / 50 * letter_scale
+    tok, pts = GLYPH_Z.split(), []
+    for i in range(0, len(tok) - 1, 2):
+        pts.append((cx + (float(tok[i][1:]) - 30) * sc, cy + (float(tok[i + 1]) - 35) * sc))
+    d.polygon(pts, fill=LETTER)
+    _outline(d, pts, LETTER_DARK, 2.4 * sc)
+
+
 def draw_icon(size):
     s = size * 4  # supersample
     im = Image.new("RGBA", (s, s), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
-    r = s // 6
-    # warm dusk gradient square (Frontier orange into deep red-brown)
-    grad = Image.new("RGBA", (s, s))
-    gd = ImageDraw.Draw(grad)
-    for y in range(s):
-        t = y / (s - 1)
-        c = (int(232 - 120 * t), int(120 - 80 * t), int(40 - 10 * t), 255)
-        gd.line([(0, y), (s, y)], fill=c)
-    mask = Image.new("L", (s, s), 0)
-    ImageDraw.Draw(mask).rounded_rectangle([0, 0, s - 1, s - 1], r, fill=255)
-    im.paste(grad, (0, 0), mask)
-    font_path = r"C:\Windows\Fonts\segoeuib.ttf"
-    if not os.path.exists(font_path):
-        font_path = r"C:\Windows\Fonts\arialbd.ttf"
-    fz = ImageFont.truetype(font_path, int(s * 0.78))
-    # "Z" with a small "+" up right
-    bb = d.textbbox((0, 0), "Z", font=fz)
-    zw, zh = bb[2] - bb[0], bb[3] - bb[1]
-    zx = (s - zw) // 2 - bb[0] - s // 14
-    zy = (s - zh) // 2 - bb[1] + s // 40
-    d.text((zx + s // 60, zy + s // 60), "Z", font=fz, fill=(60, 15, 5, 160))
-    d.text((zx, zy), "Z", font=fz, fill=(255, 246, 228, 255))
-    pw = max(s // 16, 2)
-    cx, cy, pl = int(s * 0.80), int(s * 0.22), int(s * 0.12)
-    d.rectangle([cx - pl, cy - pw // 2, cx + pl, cy + pw // 2], fill=(255, 246, 228, 255))
-    d.rectangle([cx - pw // 2, cy - pl, cx + pw // 2, cy + pl], fill=(255, 246, 228, 255))
+    if size < 32:
+        _tile(d, s / 2, s / 2, s * 0.48, 1.3, False)
+    else:
+        _tile(d, s * 0.46, s * 0.54, s * 0.45, 1.18, True)
+        cx, cy, r = s * 0.80, s * 0.20, s * 0.19   # the plus, on the tile's top right edge
+        d.polygon(_diamond(cx, cy, r), fill=RED)
+        _outline(d, _diamond(cx, cy, r), RED_DARK, r * 0.14)
+        a, w = r * 0.5, max(1, r * 0.17)
+        d.rectangle([cx - a, cy - w, cx + a, cy + w], fill=(255, 255, 255))
+        d.rectangle([cx - w, cy - a, cx + w, cy + a], fill=(255, 255, 255))
     return im.resize((size, size), Image.LANCZOS)
 
 

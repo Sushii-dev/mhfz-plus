@@ -41,7 +41,7 @@ if you turn on the optional tap catching). It never patches game code and never 
 - No added input latency. An optional setting reduces it slightly.
 - FPS counter, an on/off key to compare, and a clip recorder: a key saves the last second of frames when something
   looks wrong, for bug reports.
-- A settings app for keys and options.
+- The MHFZ Plus app: play, every setting, bug reports and help in one window, in Frontier's own style.
 - Comes with [DXVK](https://github.com/doitsujin/dxvk) (Direct3D 9 on Vulkan) as a one-click option: it halves the CPU time per
   frame, which in our tests meant 50-70% more frames in towns and crowds. Without Vulkan 1.3 the game falls back to
   Windows' Direct3D 9.
@@ -79,7 +79,7 @@ busiest spots. By the table, the same PC would hold 60 everywhere on a 60 Hz mon
 - **60 Hz:** the monitor is the only limit. Almost any PC holds 60.
 - **144 Hz and up:** the monitor sets the ceiling, and in busy scenes the CPU decides how close you get to it. DXVK (on
   by default) roughly halves the CPU time per frame, and it matters most here.
-- **Setting to try:** in the settings app, tick "Show advanced settings"; on the Quality tab, "Use slots missed by up
+- **Setting to try:** in MHFZ Plus > Settings, tick "Advanced"; under Quality, "Use slots missed by up
   to half an interval" lets a frame
   that just missed its slot still go out. It gives more frames in busy scenes (on 144 Hz: 120 with up to ~15 ms of
   work). The cost: two frames can land closer than one refresh apart, which can tear with V-Sync off. It adds no input
@@ -97,10 +97,18 @@ Beta. One player has tested it for many hours on MezeLounge and Rain (3440x1440 
 - Rain's game code is a different build from MezeLounge's. The frame-rate mod only uses Direct3D calls, so it works
   on both, but Rain can change its client at any time.
 
+**Found a problem?** [Open a bug report](https://github.com/Sushii-dev/mhfz-plus/issues/new?template=bug_report.yml).
+Press Delete in game right after a glitch to save a clip, then MHFZ Plus > Help > **Make a bug report**: it zips your
+logs, settings and PC specs and opens the form with your setup filled in. Write what happened and drag the zip in.
+
 ## Install
 
 Download the latest release, extract it, run `Install.cmd` and follow the window. The included `README.txt` covers
 installing, playing, settings, reporting a glitch and uninstalling.
+
+**Linux and Steam Deck:** extract it and run `sh install.sh` in a terminal. MHFZ Plus goes into the Wine prefix the
+game already runs in (Steam/Proton, Lutris, Bottles, Heroic or plain Wine), with a menu entry and optional Steam
+entries; `sh uninstall.sh` removes it again. Details in "LINUX AND STEAM DECK" in `README.txt`.
 
 Before you install, check the rules of the server you play on: see [Servers](docs/LEGAL.md#servers).
 

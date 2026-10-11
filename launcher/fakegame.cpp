@@ -5,6 +5,8 @@
 //                              allow-d3d9.txt exists), logs like the real one, starts ..\Client\client.exe, waits for it
 //   client.exe                 Rain client: at 1 s ("GET_TXT") reports which files are English and whether d3d9.dll
 //                              is present, exits at 4 s
+// With crash.txt in the simulation root, mhf.exe and client.exe end with an access violation's exit code instead
+// (as a crashed game does; no crash dialog).
 // Reports are appended to report.txt in the simulation root.
 #include <windows.h>
 #include <cstdio>
@@ -20,6 +22,11 @@ static void Report(const wchar_t* who, const std::wstring& msg) {
     GetLocalTime(&st);
     fwprintf(f, L"%02d:%02d:%02d.%03d %ls: %ls\n", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, who, msg.c_str());
     fclose(f);
+}
+static void CrashIfAsked() {
+    if (GetFileAttributesW((g_root + L"\\crash.txt").c_str()) == INVALID_FILE_ATTRIBUTES) return;
+    Report(L"sim", L"crashing (exit code c0000005)");
+    TerminateProcess(GetCurrentProcess(), 0xC0000005);
 }
 static bool SameFile(const std::wstring& a, const std::wstring& b) {
     HANDLE x = CreateFileW(a.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
@@ -93,6 +100,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         Report(L"mhf", L"in game: " + std::to_wstring(e) + L" English, " + std::to_wstring(o) + L" original, " + std::to_wstring(x) + L" other");
         Sleep(2000);
         Report(L"mhf", L"exit");
+        CrashIfAsked();
         return 0;
     }
     if (_wcsicmp(name.c_str(), L"rain-server-launcher.exe") == 0) {
@@ -149,6 +157,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         Report(L"client", L"GET_TXT: " + std::to_wstring(e) + L" English, " + std::to_wstring(o) + L" original, " + std::to_wstring(x) + L" other; d3d9.dll at start " + (dll0 ? L"present" : L"absent") + L", at 1 s " + (dll ? L"present" : L"absent"));
         Sleep(3000);
         Report(L"client", L"exit");
+        CrashIfAsked();
         return 0;
     }
     return 2;

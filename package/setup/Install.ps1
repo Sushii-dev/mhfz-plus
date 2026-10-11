@@ -110,10 +110,11 @@ function Install-Plus($o) {
     $dst = $o.Target
     # (a real install only: -Test installs into its own folder for the simulated games, whatever is running)
     if (-not $Test -and (Get-Process -Name 'MHFZ-Plus' -ErrorAction SilentlyContinue)) { throw 'MHFZ Plus is running. Close the game first.' }
-    if (-not $Test -and (Get-Process -Name 'MHFZ-Plus-Settings' -ErrorAction SilentlyContinue)) { throw 'The MHFZ Plus settings window is open. Close it first.' }
+    if (-not $Test -and (Get-Process -Name 'MHFZ-Plus-App', 'MHFZ-Plus-Settings' -ErrorAction SilentlyContinue)) { throw 'The MHFZ Plus window is open. Close it first.' }
     New-Item -ItemType Directory -Force $dst | Out-Null
     Copy-Item (Join-Path $pkg 'payload\*') $dst -Recurse -Force
-    Copy-Item (Join-Path $PSScriptRoot 'SteamShortcuts.ps1'), (Join-Path $PSScriptRoot 'Uninstall.ps1') $dst -Force
+    Remove-Item (Join-Path $dst 'MHFZ-Plus-Settings.exe') -Force -ErrorAction SilentlyContinue   # (1.3 and older: now the MHFZ Plus app)
+    Copy-Item (Join-Path $PSScriptRoot 'SteamShortcuts.ps1'), (Join-Path $PSScriptRoot 'Uninstall.ps1'), (Join-Path $PSScriptRoot 'Report.ps1') $dst -Force
     Get-ChildItem $dst -Recurse -File | Unblock-File   # downloaded files: no SmartScreen prompt on every start
     $exe = Join-Path $dst 'MHFZ-Plus.exe'
 
@@ -174,25 +175,33 @@ function Install-Plus($o) {
     }
 
     if (-not $Test) {
-        # Start menu folder, desktop shortcuts, and an "Apps & features" entry
+        # one shortcut: the MHFZ Plus app (play, settings, help) in the Start menu and on the desktop, and an
+        # "Apps & features" entry. The Start menu folder and per-server shortcuts of 1.3 and older go.
         $shell = New-Object -ComObject WScript.Shell
-        $menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'MHFZ Plus'
-        New-Item -ItemType Directory -Force $menu | Out-Null
-        function New-Link($path, $target, $arguments, $desc, $icon = "$exe,0") {
+        $app = Join-Path $dst 'MHFZ-Plus-App.exe'
+        $programs = [Environment]::GetFolderPath('Programs'); $desktop = [Environment]::GetFolderPath('Desktop')
+        Remove-Item (Join-Path $programs 'MHFZ Plus') -Recurse -Force -ErrorAction SilentlyContinue
+        foreach ($n in $names.Values) { Remove-Item (Join-Path $desktop "$n.lnk") -Force -ErrorAction SilentlyContinue }
+        function New-Link($path, $target, $arguments, $desc, $icon = "$app,0") {
             $l = $shell.CreateShortcut($path)
             $l.TargetPath = $target; $l.Arguments = $arguments; $l.WorkingDirectory = $dst; $l.IconLocation = $icon; $l.Description = $desc
             $l.Save()
         }
-        foreach ($s in $servers) {
-            New-Link (Join-Path $menu "$($names[$s]).lnk") $exe $s "Monster Hunter Frontier Z on $s with MHFZ Plus"
-            if ($o.Desktop) { New-Link (Join-Path ([Environment]::GetFolderPath('Desktop')) "$($names[$s]).lnk") $exe $s "Monster Hunter Frontier Z on $s with MHFZ Plus" }
-        }
-        $settingsExe = Join-Path $dst 'MHFZ-Plus-Settings.exe'
-        if (Test-Path $settingsExe) { New-Link (Join-Path $menu 'MHFZ Plus settings.lnk') $settingsExe '' 'Keys, FPS counter, frame rate and other settings of the frame-rate mod' "$settingsExe,0" }
-        New-Link (Join-Path $menu 'Put the original game files back.lnk') $exe 'all --restore' 'Removes the English files and the frame-rate mod from the game folders'
-        New-Link (Join-Path $menu 'MHFZ Plus folder (settings and logs).lnk') $dst '' 'MHFZ Plus settings and logs' "$env:SystemRoot\explorer.exe,0"
+        $what = 'Play Monster Hunter Frontier Z with MHFZ Plus: settings, help and bug reports'
+        New-Link (Join-Path $programs 'MHFZ Plus.lnk') $app '' $what
+        if ($o.Desktop) { New-Link (Join-Path $desktop 'MHFZ Plus.lnk') $app '' $what }
+        # Windows shows an updated exe with its old icon from its icon cache: tell the shell the icons changed
+        try {
+            Add-Type -Namespace MhfzPlus -Name Shell -MemberDefinition '[DllImport("shell32.dll", CharSet = CharSet.Unicode)] public static extern void SHChangeNotify(int e, uint f, string a, IntPtr b);'
+            foreach ($lnk in @((Join-Path $programs 'MHFZ Plus.lnk'), (Join-Path $desktop 'MHFZ Plus.lnk'))) {
+                if (Test-Path $lnk) { [MhfzPlus.Shell]::SHChangeNotify(0x2000, 0x5, $lnk, [IntPtr]::Zero) }   # SHCNE_UPDATEITEM, SHCNF_PATHW
+            }
+            [MhfzPlus.Shell]::SHChangeNotify(0x08000000, 0, $null, [IntPtr]::Zero)   # SHCNE_ASSOCCHANGED: the icon cache is reread
+            $ie4 = Join-Path $env:SystemRoot 'System32\ie4uinit.exe'
+            if (Test-Path $ie4) { Start-Process $ie4 -ArgumentList '-show' -WindowStyle Hidden }   # (Windows 10/11's own icon refresh)
+        } catch { }
+        else { Remove-Item (Join-Path $desktop 'MHFZ Plus.lnk') -Force -ErrorAction SilentlyContinue }
         $ps = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
-        New-Link (Join-Path $menu 'Uninstall MHFZ Plus.lnk') $ps "-NoProfile -ExecutionPolicy Bypass -File `"$dst\Uninstall.ps1`"" 'Uninstall MHFZ Plus' "$ps,0"
         $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\MHFZ-Plus'
         New-Item $key -Force | Out-Null
         $v = @{ DisplayName = 'MHFZ Plus (Monster Hunter Frontier Z: English + high frame rate)'; DisplayVersion = $version; Publisher = 'MHFZ Plus';
@@ -221,12 +230,17 @@ function Add-ToSteam($dst, $exe, $servers) {
         Start-Sleep 2
         $restart = $true
     }
-    $entries = @($servers | ForEach-Object { [pscustomobject]@{ Name = $names[$_]; Exe = $exe; StartDir = $dst; LaunchOptions = $_; Icon = $exe } })
+    # the MHFZ Plus app, and a Play entry per server that starts the game in one press (Steam Deck, Big Picture)
+    $app = Join-Path $dst 'MHFZ-Plus-App.exe'
+    $entries = @([pscustomobject]@{ Name = 'MHFZ Plus'; Exe = $app; StartDir = $dst; LaunchOptions = ''; Icon = $app }) +
+               @($servers | ForEach-Object { [pscustomobject]@{ Name = $names[$_]; Exe = $exe; StartDir = $dst; LaunchOptions = $_; Icon = $exe } })
+    $problem = $null
     foreach ($c in $cfgs) {
-        Set-SteamShortcuts $c $entries
-        Copy-SteamArtwork $c $entries
+        try { Set-SteamShortcuts $c $entries; Copy-SteamArtwork $c $entries }
+        catch { $problem = $_.Exception.Message }   # (Steam's file left as it was: everything else is installed)
     }
     if ($restart) { Start-Process (Join-Path (Get-SteamPath) 'steam.exe') }
+    if ($problem) { return "Steam: not added - $problem Add MHFZ-Plus-App.exe in Steam yourself (Games > Add a Non-Steam Game)." }
     return "Steam: added $(($entries | ForEach-Object Name) -join ' and ')"
 }
 
@@ -272,6 +286,7 @@ if ($Unattended) {
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "$title $version"
+try { $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon((Join-Path $pkg 'payload\MHFZ-Plus-App.exe')) } catch { }   # (MHFZ Plus's icon, not PowerShell's)
 $form.StartPosition = 'CenterScreen'
 $form.FormBorderStyle = 'FixedDialog'
 $form.MaximizeBox = $false
@@ -315,18 +330,18 @@ $tRain = Add-PathRow $y $rainFound; $y += 40
 $cFps = Add-Check 'High frame rate (up to your monitor''s refresh rate; game speed stays the same)' 24 $y $true; $y += 24
 $cEng = Add-Check ('English translation' + $(if (-not $hasEnglish) { ' - not included in this download' } else { '' })) 24 $y $hasEnglish; $y += 24
 $cEng.Enabled = $hasEnglish
-$cDesk = Add-Check 'Desktop shortcuts' 24 $y $true; $y += 24
+$cDesk = Add-Check 'Desktop shortcut' 24 $y $true; $y += 24
 $hasDxvk = Test-Path (Join-Path $pkg 'payload\fps\dxvk\d3d9.dll')
 $cDxvk = Add-Check 'Use DXVK: faster (needs a Vulkan graphics card; otherwise Windows Direct3D is used)' 24 $y $hasDxvk; $y += 24
 $cDxvk.Enabled = $hasDxvk
 $steamOk = [bool](Get-SteamUserConfigDirs)
-$cSteam = Add-Check ('Add to Steam (as non-Steam games)' + $(if (-not $steamOk) { ' - Steam not found' } else { '' })) 24 $y $steamOk; $y += 24
+$cSteam = Add-Check ('Add to Steam (MHFZ Plus, and a Play entry for each server)' + $(if (-not $steamOk) { ' - Steam not found' } else { '' })) 24 $y $steamOk; $y += 24
 $cSteam.Enabled = $steamOk
 $y += 10
 [void](Add-Label 'Install to' 12 $y 600 20 $true); $y += 22
 $tTarget = Add-PathRow $y $defaultTarget; $y += 40
 [void](Add-Label ('Private servers may treat mods as cheating: use at your own risk. Your game files are only changed while you ' +
-                  'play through MHFZ Plus, and "Put the original game files back" in the Start menu undoes everything.') 12 $y 600 36)
+                  'play through MHFZ Plus, and Help > "Put the original files back" in MHFZ Plus undoes everything.') 12 $y 600 36)
 $y += 44
 $ok = New-Object System.Windows.Forms.Button
 $ok.Text = if ($prevVersion) { 'Update' } else { 'Install' }; $ok.Location = New-Object System.Drawing.Point(414, $y); $ok.Size = New-Object System.Drawing.Size(90, 30)
@@ -345,12 +360,10 @@ $ok.Add_Click({
                                               RainDir = $tRain.Text; English = $cEng.Checked; Fps = $cFps.Checked; Desktop = $cDesk.Checked; Dxvk = $cDxvk.Checked;
                                               Steam = $cSteam.Checked })
         $form.Cursor = 'Default'
-        $msg = "MHFZ Plus is installed.`n`n$($r -join "`n")`n`nFrom now on, start the game with the MHFZ Plus shortcuts (or from Steam) instead of the usual launcher."
-        $settingsExe = Join-Path $tTarget.Text 'MHFZ-Plus-Settings.exe'
-        if ($cFps.Checked -and (Test-Path $settingsExe)) {
-            $msg += "`n`nKeys, the FPS counter and the other frame-rate settings can be changed any time with 'MHFZ Plus settings' in the Start menu. Open the settings now?"
-            if ([System.Windows.Forms.MessageBox]::Show($msg, $title, 'YesNo', 'Information') -eq 'Yes') { Start-Process $settingsExe -WorkingDirectory $tTarget.Text }
-        } else { [void][System.Windows.Forms.MessageBox]::Show($msg, $title, 'OK', 'Information') }
+        $msg = "MHFZ Plus is installed.`n`n$($r -join "`n")`n`nFrom now on, start the game from MHFZ Plus (Start menu, desktop or Steam) instead of the usual launcher: " +
+               "it also has the settings, and Help for bug reports and the original files.`n`nOpen MHFZ Plus now?"
+        $appExe = Join-Path $tTarget.Text 'MHFZ-Plus-App.exe'
+        if ([System.Windows.Forms.MessageBox]::Show($msg, $title, 'YesNo', 'Information') -eq 'Yes' -and (Test-Path $appExe)) { Start-Process $appExe -WorkingDirectory $tTarget.Text }
         $form.Close()
     } catch {
         $form.Cursor = 'Default'

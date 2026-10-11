@@ -19,7 +19,7 @@ built and analysed with, the projects that documented the game, and the teams th
 | [Capstone](https://www.capstone-engine.org/) | disassembly in the analysis scripts | BSD-3-Clause |
 | [pefile](https://github.com/erocarrera/pefile) | reading PE files in the analysis scripts | MIT |
 | [llvm-mingw](https://github.com/mstorsjo/llvm-mingw) (we used the copy that ships with [Windhawk](https://windhawk.net/)) | compiling the mod, launcher and test tools | Apache-2.0 with LLVM exception; mingw-w64 runtime: permissive licenses |
-| C# compiler of the .NET Framework (part of Windows) | building the settings app | Microsoft |
+| C# compiler of the .NET Framework (part of Windows) | building the MHFZ Plus app | Microsoft |
 | [DXVK](https://github.com/doitsujin/dxvk) (Philip Rebohle and contributors) | the bundled Direct3D 9 backend on Vulkan (unmodified 3.1.1, since MHFZ Plus 1.3); also used to test the mod | zlib |
 | Python | analysis and test scripts | PSF |
 
@@ -41,3 +41,6 @@ The translation pipeline isn't part of this repository; it's credited here becau
   work, the prompts that steered the agent, the in-game testing and diagnosis, and every decision on what shipped.
 - **Claude** (Anthropic), through Claude Code, wrote most of the code and documentation under that direction.
   See [AI-USAGE.md](AI-USAGE.md).
+- **The MHFZ Plus app's look** follows Monster Hunter Frontier's own screens (World Select's dialogs, the in-game
+  HUD) without using any of the game's images: the title letters, tiles and panels are drawn in code, and the
+  illustrated map behind them (`package/ui/backdrop.jpg`) was made by Sushii-dev with ChatGPT's image generation.

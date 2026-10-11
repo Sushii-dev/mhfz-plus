@@ -11,7 +11,7 @@ Everything builds on Windows 10/11 from PowerShell. No Visual Studio needed.
 - **Python 3** with Pillow (`pip install pillow`). `tools\mkres.py` draws the icon and writes the version and
   manifest resources.
 - For the analysis scripts only: `pip install pefile capstone`.
-- The settings app uses the C# compiler of the .NET Framework 4, which is part of Windows.
+- The MHFZ Plus app uses the C# compiler of the .NET Framework 4, which is part of Windows.
 
 ## Commands
 
@@ -21,7 +21,7 @@ Everything builds on Windows 10/11 from PowerShell. No Visual Studio needed.
 .\build.ps1 -Tests             # the test programs: build\testapp.exe, build\regrouptest.exe, ...
 .\build.ps1 -Bench             # build\pairbench.exe, the offline pairing bench
 .\build.ps1 -Profile           # build\prof\d3d9.dll with the sampling profiler, plus a link map
-.\tools\buildsettings.ps1      # build\MHFZ-Plus-Settings.exe
+.\tools\buildsettings.ps1      # build\MHFZ-Plus-App.exe (the MHFZ Plus app; tools\apptest.ps1 tests it)
 .\tools\package.ps1            # dist\MHFZ-Plus-<version>.zip (needs dist-work\english, see below)
 ```
 

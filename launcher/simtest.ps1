@@ -1,6 +1,11 @@
 # End-to-end test of MHFZ-Plus.exe against simulated MezeLounge / Rain programs (launcher\fakegame.cpp).
-# Usage: launcher\simtest.ps1 [meze|rain|all] [-Fresh]   (results: sim\report.txt, sim\plus\MHFZ-Plus-<server>.log)
-param([string]$Which = "all", [switch]$Fresh)
+# Usage: launcher\simtest.ps1 [meze|rain|all] [-Fresh] [-Crash] [-OtherClient]
+#   (results: sim\report.txt, sim\plus\MHFZ-Plus-<server>.log)
+#   -Crash        the games end like a crash (an access violation's exit code): the log says "game crashed", the
+#                 originals still come back
+#   -OtherClient  another program called client.exe runs from elsewhere the whole time: it isn't taken for Rain's
+#                 game ("not the game, left out"), and the session still ends when the real one does
+param([string]$Which = "all", [switch]$Fresh, [switch]$Crash, [switch]$OtherClient)
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot
 $sim = Join-Path $root "sim"
@@ -41,7 +46,14 @@ english=1
 fps=1
 fps_mode=swap
 "@
-Remove-Item "$sim\report.txt" -ErrorAction SilentlyContinue
+Remove-Item "$sim\report.txt", "$sim\crash.txt" -ErrorAction SilentlyContinue
+if ($Crash) { Set-Content "$sim\crash.txt" 'the simulated games end like a crash' }
+$other = $null
+if ($OtherClient) {   # (Windows' ping, renamed: a harmless program that runs for a while)
+    New-Item -ItemType Directory -Force "$sim\other" | Out-Null
+    Copy-Item "$env:SystemRoot\System32\PING.EXE" "$sim\other\client.exe" -Force
+    $other = Start-Process "$sim\other\client.exe" -ArgumentList '-n 150 127.0.0.1' -WindowStyle Hidden -PassThru
+}
 foreach ($s in @(if ($Which -eq "all") { "meze", "rain" } else { $Which })) {
     "=== $s"
     $sw = [Diagnostics.Stopwatch]::StartNew()
@@ -50,6 +62,8 @@ foreach ($s in @(if ($Which -eq "all") { "meze", "rain" } else { $Which })) {
     "launcher exit code $($p.ExitCode) after $([int]$sw.Elapsed.TotalSeconds) s"
     Get-Content "$plus\MHFZ-Plus-$s.log"
 }
+if ($other -and -not $other.HasExited) { $other.Kill() }
+Remove-Item "$sim\crash.txt" -ErrorAction SilentlyContinue
 "=== report"
 Get-Content "$sim\report.txt"
 "=== final state"

@@ -93,7 +93,8 @@ its next read, once. It hooks only DirectInput's own objects. In the test app, 1
 | `src/fps.cpp` | everything else: recording, pairing, replay, scheduling, overlay, recorder, settings |
 | `src/vsinfo.h` | shader bytecode analysis: which constants reach the output position |
 | `launcher/launcher.cpp` | MHFZ Plus launcher: puts the mod (and the English files) in for a session, takes them out after |
-| `settings/Settings.cs` | the settings app |
+| `settings/Hub*.cs`, `settings/Anim.cs` | the MHFZ Plus app: Play, Settings and Help in one window, and its animations |
+| `settings/Settings.cs` | the settings model (what each setting is) and the app's command line |
 | `package/` | installer scripts, the player README, the default settings file |
 | `test/` | the Direct3D 9 test app and other test programs |
 | `tools/` | build, test, bench and analysis scripts |

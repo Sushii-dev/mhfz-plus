@@ -72,10 +72,28 @@ function Get-ShortcutAppId([string]$exe, [string]$name) {
     return [BitConverter]::ToInt32([BitConverter]::GetBytes([uint32]$crc), 0)
 }
 
-# An entry of ours: it starts MHFZ-Plus.exe (from any folder: a moved install or an 8.3 path still counts).
+# An entry of ours: it starts MHFZ-Plus.exe or the MHFZ Plus app (from any folder: a moved install or an 8.3 path
+# still counts).
 function Test-OurShortcut($e) {
     $exe = [string]$e['Exe']; if (-not $exe) { $exe = [string]$e['exe'] }
-    return $exe.Trim('"') -like '*\MHFZ-Plus.exe'
+    $exe = $exe.Trim('"')
+    return $exe -like '*\MHFZ-Plus.exe' -or $exe -like '*\MHFZ-Plus-App.exe'
+}
+
+# Steam's file is changed only if reading it and writing it back gives exactly its bytes: a layout this script
+# doesn't know (a new kind of field, text that isn't UTF-8) is left alone - with every other game in it - rather
+# than rewritten with something lost. Writes go to a temporary file first, so a crash can't leave half a file.
+function Read-ShortcutsChecked([string]$file) {
+    $bytes = [IO.File]::ReadAllBytes($file)
+    $same = $false
+    try { $root = Read-VdfBinary $bytes; $same = [Convert]::ToBase64String((Write-VdfBinary $root)) -ceq [Convert]::ToBase64String($bytes) } catch { }
+    if (-not $same) { throw "Steam's shortcuts.vdf is laid out in a way MHFZ Plus doesn't know, so it was left as it is." }
+    $root
+}
+function Write-ShortcutsFile([string]$file, [byte[]]$bytes) {
+    $tmp = "$file.mhfz-tmp"
+    [IO.File]::WriteAllBytes($tmp, $bytes)
+    Move-Item -LiteralPath $tmp $file -Force
 }
 
 # Adds (or updates) shortcuts. $entries: objects with Name, Exe, StartDir, LaunchOptions, Icon.
@@ -85,8 +103,8 @@ function Set-SteamShortcuts([string]$configDir, $entries) {
     $file = Join-Path $configDir 'shortcuts.vdf'
     $root = [ordered]@{ 'shortcuts' = [ordered]@{} }
     if (Test-Path $file) {
+        $root = Read-ShortcutsChecked $file
         Copy-Item $file "$file.mhfz-plus-backup" -Force
-        $root = Read-VdfBinary ([IO.File]::ReadAllBytes($file))
         if (-not $root.Contains('shortcuts')) { $root['shortcuts'] = [ordered]@{} }
     }
     $old = $root['shortcuts']
@@ -125,21 +143,20 @@ function Set-SteamShortcuts([string]$configDir, $entries) {
     $new = [ordered]@{}
     for ($i = 0; $i -lt $keep.Count; $i++) { $new["$i"] = $keep[$i] }
     $root['shortcuts'] = $new
-    $bytes = Write-VdfBinary $root
-    [IO.File]::WriteAllBytes($file, $bytes)
+    Write-ShortcutsFile $file (Write-VdfBinary $root)
 }
 
 # Removes our shortcuts (everything that starts MHFZ-Plus.exe).
 function Remove-SteamShortcuts([string]$configDir) {
     $file = Join-Path $configDir 'shortcuts.vdf'
     if (-not (Test-Path $file)) { return }
+    $root = Read-ShortcutsChecked $file
     Copy-Item $file "$file.mhfz-plus-backup" -Force
-    $root = Read-VdfBinary ([IO.File]::ReadAllBytes($file))
     $old = $root['shortcuts']
     $keep = New-Object System.Collections.ArrayList
     foreach ($k in $old.Keys) { $e = $old[$k]; if (-not (Test-OurShortcut $e)) { [void]$keep.Add($e) } }
     $new = [ordered]@{}
     for ($i = 0; $i -lt $keep.Count; $i++) { $new["$i"] = $keep[$i] }
     $root['shortcuts'] = $new
-    [IO.File]::WriteAllBytes($file, (Write-VdfBinary $root))
+    Write-ShortcutsFile $file (Write-VdfBinary $root)
 }

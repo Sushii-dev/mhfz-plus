@@ -30,7 +30,7 @@ for themselves how to treat it.
 **The AI (Anthropic's Claude, through the Claude Code agent)** did the implementation under that direction:
 
 - the static analysis of the game's renderer and frame limiter (with Ghidra and Python scripts);
-- nearly all of the code: the frame-rate mod (`src/`), the launcher, the installer scripts and the settings app;
+- nearly all of the code: the frame-rate mod (`src/`), the launcher, the installer scripts and the MHFZ Plus app;
 - the test app, the offline benches and the analysis tools;
 - most of the documentation, this page included, reviewed by the maintainer.
 

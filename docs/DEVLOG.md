@@ -340,6 +340,27 @@ in town.
   (`tools\installtest.ps1`: 0 failures). Open-source prep: README/docs/CONTRIBUTING/LICENSE (draft MIT), `tools\mkrepo.ps1`.
 - **Tools:** `validate.ps1` (the release gate; run with pwsh), `starthang.ps1`, `regrouphang.ps1`, `featuretest.ps1`, `mkrepo.ps1`;
   `build.ps1 -Tests`; `re\ghidra_scripts\Decomp.java` (headless decompile of the functions containing given addresses).
+
+### 2026-10-11 night: 1.4.0 gate, robustness pass (no game)
+
+- **1.4.0 gate (n26 vs n25, the deployed 1.3.3):** DXVK starts 0/200, pairhash 1979 ticks identical, exits 0/6, regroup
+  identical, selfcheck per scene within noise, stress clean (8 option sets), featuretest incl. the DXVK abort fallback,
+  installtest 0 failures. (validate.ps1 from a worktree needs `build\mhfz-fps.ini`, `build\dxvk` copied from main's build.)
+- **input_latch taps (inputtest, 66 taps of 12 ms):** without 32-38%, with 74-92% between runs on this PC; n25 and n26
+  run the same input code (n26's only mod change is the backend abort guard) - environmental spread, see the repeats.
+- **Launcher CPU:** a process list (Toolhelp) costs ~1.1 ms here; Rain's session loop did two plus the launcher log every
+  10 ms (~20% of a core before the game, ~10% during it). Now: log every 10 ms until the game runs (the English files
+  must beat it), processes every 100 ms, everything 4x/s in game; MezeLounge waits on the game's process handle. Don't
+  cache the log by its directory entry: an open log's size/time there can lag (the check-passed line would be missed).
+- **Launcher safety:** a backup goes back only if its hash is the original's (a damaged one would break the game);
+  backups flushed before rename; client.exe counts only from the game folder (FinalPath: junctions/subst/8.3 resolved;
+  launchers stay name-only - they may update from elsewhere); a thread-less process (ended, still held) isn't running;
+  the game's exit code >= 0xC0000000 is logged "game crashed" (Rain's client quits with 102, MezeLounge 0).
+- **Steam shortcuts.vdf:** Linux rewrote an unparsable file as empty + ours (every other non-Steam game gone). Both OSes
+  now change it only if parse + write gives its exact bytes (the owner's real file does), write via a temp file.
+- **App:** single instance (mutex), crash log MHFZ-Plus-App.log + plain message, OpenUrl https only, update page must
+  be this repo's /releases/, Hub.cs split by page, `tools\apptest.ps1` (no window; caught --shots rewriting server=).
+- **Mod settings:** retro_frames 8..600 (VRAM), retro_ticks 0..48, margin_us 0..30000 (a negative one would slow the tick).
 ## Debug tooling
 
 - **Live config:** the mod re-reads `mhfz-fps.ini` whenever it changes on disk (checked twice a second). Changing `capture_trigger` or `dump_trigger` starts a capture or dump remotely. Isolation switches: `interp_vs`, `interp_xform`, `interp_up`, `interp_ps`, `lerp_nonpos`.

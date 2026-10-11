@@ -370,6 +370,13 @@ static void LoadConfig() {
     char ini[MAX_PATH];
     snprintf(ini, sizeof ini, "%s\\mhfz-fps.ini", g_dir);
     auto I = [&](const char* k, int d) { return (int)GetPrivateProfileIntA("fps", k, d, ini); };
+    // a number that sizes memory or timing: held to the range the settings app offers (a typo in the ini - 100000
+    // clip frames, a negative margin - must not exhaust video memory or slow the game's tick), and said in the log
+    auto R = [&](const char* k, int d, int lo, int hi) {
+        int v = I(k, d), c = std::min(hi, std::max(lo, v));
+        if (c != v) Log("setting %s=%d is out of range: %d used (%d..%d)", k, v, c, lo, hi);
+        return c;
+    };
     // a key: a virtual-key code, or a name with modifiers - "ctrl+shift+1", "delete", "f5", "insert", "alt+x" (vk | 0x100
     // ctrl | 0x200 shift | 0x400 alt); 0 or "none" for no key
     auto K = [&](const char* k, int d) {
@@ -417,7 +424,7 @@ static void LoadConfig() {
     C.snap_ratio = I("snap_ratio_pct", (int)(C.snap_ratio * 100)) / 100.0f;
     C.smooth_ratio = I("smooth_ratio_pct", (int)(C.smooth_ratio * 100)) / 100.0f;
     C.slot_rows = I("slot_rows", C.slot_rows);
-    C.margin_us = I("margin_us", C.margin_us);
+    C.margin_us = R("margin_us", C.margin_us, 0, 30000);  // (below 0 the in-between frames would run into the game's tick)
     C.max_extra = I("max_extra", C.max_extra);
     C.debug_marker = I("debug_marker", C.debug_marker);
     C.stats_interval = I("stats_interval", C.stats_interval);
@@ -434,8 +441,8 @@ static void LoadConfig() {
     C.key_capture = K("key_capture", C.key_capture);
     C.capture_delay_ms = I("capture_delay_ms", C.capture_delay_ms);
     C.retro = I("retro", C.retro);
-    C.retro_frames = I("retro_frames", C.retro_frames);
-    C.retro_ticks = I("retro_ticks", C.retro_ticks);
+    C.retro_frames = R("retro_frames", C.retro_frames, 8, 600);  // (each a screen-sized surface in video memory)
+    C.retro_ticks = R("retro_ticks", C.retro_ticks, 0, 48);
     C.retro_trigger = I("retro_trigger", C.retro_trigger);
     C.precise_tick = I("precise_tick", C.precise_tick);
     C.lerp_nonpos = I("lerp_nonpos", C.lerp_nonpos);
@@ -10513,10 +10520,66 @@ static HRESULT WINAPI hk_CreateDevice(IDirect3D9* self, UINT ad, D3DDEVTYPE type
         Log("keys (vk | 0x100 ctrl | 0x200 shift | 0x400 alt): save %#x, overlay %#x, camera paths %#x, light fix %#x, fog rule %#x, repeated objects %#x",
             C.key_capture, C.key_overlay, C.key_campaths, C.key_carry, C.key_nonpos, C.key_field);
         if (C.hotkeys) Toast("frame-rate mod on: Ctrl+Shift+1 camera paths, +2 light fix, +3 fog rule, +4 repeated objects, Delete saves");
-        if (g_backendFellBack) Toast("DXVK could not start on this PC (it needs Vulkan 1.3) - using Windows' Direct3D");
+        if (g_backendFellBack) Toast("DXVK could not start on this PC (no Vulkan 1.3 it can use) - using Windows' Direct3D");
         BeginFrame();
     }
     return hr;
+}
+
+// DXVK ends the whole process when it can't use the Vulkan it finds: an error it never catches (std::terminate, then
+// the C runtime's abort) - no Vulkan 1.3 driver on Windows, no 32-bit Vulkan or an older Wine on Linux. During its
+// Direct3DCreate9 that abort jumps back here instead, and the game starts on Windows' own Direct3D 9. DXVK is not
+// called again (whatever it was in the middle of stays so; it holds nothing the game or the system needs).
+static void* g_backendJmp[5];       // __builtin_setjmp
+static void* g_backendSeh;          // the thread's SEH chain at that point (put back after the jump)
+static volatile DWORD g_backendGuard;  // the thread inside the guarded call
+static void(__cdecl* o_backendAbort)();
+static void __cdecl BackendAbort() {
+    if (g_backendGuard == GetCurrentThreadId()) __builtin_longjmp(g_backendJmp, 1);
+    if (o_backendAbort) o_backendAbort();
+    TerminateProcess(GetCurrentProcess(), 3);
+}
+// Points the backend's imported abort (from whichever C runtime it uses) at BackendAbort.
+static bool GuardBackendAbort(HMODULE m) {
+    auto base = (BYTE*)m;
+    if (!m || ((IMAGE_DOS_HEADER*)base)->e_magic != IMAGE_DOS_SIGNATURE) return false;
+    auto nt = (IMAGE_NT_HEADERS32*)(base + ((IMAGE_DOS_HEADER*)base)->e_lfanew);
+    DWORD rva = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress;
+    if (nt->Signature != IMAGE_NT_SIGNATURE || !rva) return false;
+    bool done = false;
+    for (auto d = (IMAGE_IMPORT_DESCRIPTOR*)(base + rva); d->Name; d++) {
+        char dll[64] = {};
+        for (int i = 0; i < 63 && base[d->Name + i]; i++) dll[i] = (char)tolower(base[d->Name + i]);
+        if (!strstr(dll, "crt") || !d->OriginalFirstThunk) continue;  // api-ms-win-crt-runtime, ucrtbase, msvcrt
+        auto names = (IMAGE_THUNK_DATA32*)(base + d->OriginalFirstThunk);
+        auto slots = (IMAGE_THUNK_DATA32*)(base + d->FirstThunk);
+        for (; names->u1.AddressOfData; names++, slots++) {
+            if (IMAGE_SNAP_BY_ORDINAL32(names->u1.Ordinal) ||
+                strcmp((const char*)((IMAGE_IMPORT_BY_NAME*)(base + names->u1.AddressOfData))->Name, "abort"))
+                continue;
+            DWORD old;
+            if (!VirtualProtect(&slots->u1.Function, 4, PAGE_READWRITE, &old)) continue;
+            if (slots->u1.Function != (DWORD)(ULONG_PTR)&BackendAbort) o_backendAbort = (void(__cdecl*)())(ULONG_PTR)slots->u1.Function;
+            slots->u1.Function = (DWORD)(ULONG_PTR)&BackendAbort;
+            VirtualProtect(&slots->u1.Function, 4, old, &old);
+            done = true;
+        }
+    }
+    return done;
+}
+// The backend's Direct3DCreate9 with its abort caught: false when it aborted.
+typedef IDirect3D9*(WINAPI* Create9_t)(UINT);
+static __attribute__((noinline)) bool GuardedCreate9(Create9_t real, UINT sdk, IDirect3D9** out) {
+    g_backendSeh = ((NT_TIB*)NtCurrentTeb())->ExceptionList;
+    g_backendGuard = GetCurrentThreadId();
+    if (__builtin_setjmp(g_backendJmp)) {
+        ((NT_TIB*)NtCurrentTeb())->ExceptionList = (EXCEPTION_REGISTRATION_RECORD*)g_backendSeh;
+        g_backendGuard = 0;
+        return false;
+    }
+    *out = real(sdk);
+    g_backendGuard = 0;
+    return true;
 }
 
 extern "C" IDirect3D9* WINAPI MyDirect3DCreate9(UINT sdk) __asm__("_Proxy_Direct3DCreate9");
@@ -10524,7 +10587,14 @@ extern "C" IDirect3D9* WINAPI MyDirect3DCreate9(UINT sdk) {
     LoadRealD3D9();
     auto real = (IDirect3D9 * (WINAPI*)(UINT)) g_real[10];
     if (!real) { Log("real Direct3DCreate9 not found"); return nullptr; }
-    IDirect3D9* d3d = real(sdk);
+    IDirect3D9* d3d = nullptr;
+    if (g_d3d9Backend[0] && GuardBackendAbort(g_realD3D9)) {
+        if (!GuardedCreate9(real, sdk, &d3d)) {
+            d3d = nullptr;
+            Log("the backend ended itself while starting (DXVK found no Vulkan it can use; its reason is in its own "
+                "log, <game>_d3d9.log)");
+        }
+    } else d3d = real(sdk);
     char backend[MAX_PATH * 3] = "?";
     auto backendName = [&] {  // (UTF-8 for the log: the path may hold a user name with ø, é...)
         wchar_t w[MAX_PATH];

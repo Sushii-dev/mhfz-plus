@@ -20,7 +20,7 @@ body:
     id: files
     attributes:
       label: Files
-      description: Drag the report zip here (and the clip zip, if there is one). A file over 25 MB? Upload it to Google Drive or similar and paste the link.
+      description: Drag the report zip here. A clip comes in several zips ("MHFZ-Plus-clip-from-..."), each small enough for GitHub - if it shows the problem, drag them all in.
   - type: textarea
     id: setup
     attributes:

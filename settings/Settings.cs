@@ -1,8 +1,8 @@
-// MHFZ Plus Settings: a window for the frame-rate mod's settings (mhfz-fps.ini), for each game MHFZ Plus is set up for.
+// MHFZ Plus app (MHFZ-Plus-App.exe): the settings model and the command line; the window is in Hub.cs.
 //
 // Every setting the mod reads is described once in Schema() below - its key, kind, default, range and help text - and
-// the window is built from that list, so a new setting in the mod needs one line here. The file is edited in place:
-// comments and settings this program doesn't know stay as they are.
+// the Settings page is built from that list, so a new setting in the mod needs one line here. The file is edited in
+// place: comments and settings this program doesn't know stay as they are.
 //
 // Which file: MezeLounge keeps the settings next to the game (fps_mode=stay); Rain keeps them in
 // fps-state\rain\mhfz-fps.ini and MHFZ Plus copies them into the game folder for a session (fps_mode=swap) - while
@@ -18,11 +18,12 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Windows.Forms;
 
-[assembly: System.Reflection.AssemblyTitle("MHFZ Plus Settings")]
+[assembly: System.Reflection.AssemblyTitle("MHFZ Plus")]
 [assembly: System.Reflection.AssemblyProduct("MHFZ Plus")]
-[assembly: System.Reflection.AssemblyVersion("1.3.0.0")]
+[assembly: System.Reflection.AssemblyVersion("1.4.0.0")]
 
 namespace MhfzPlus
 {
@@ -328,6 +329,8 @@ namespace MhfzPlus
 
         public static string FindBase()
         {
+            string env = Environment.GetEnvironmentVariable("MHFZPLUS_BASE");   // (testing: another MHFZ Plus folder)
+            if (!string.IsNullOrEmpty(env)) return env;
             string here = AppDomain.CurrentDomain.BaseDirectory;
             if (File.Exists(System.IO.Path.Combine(here, "MHFZ-Plus.ini"))) return here;
             return System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MHFZ-Plus");
@@ -347,371 +350,6 @@ namespace MhfzPlus
         }
     }
 
-    // ------------------------------------------------------------------------------------------------ key capture
-    class KeyDialog : Form
-    {
-        public string Result;
-        Label shown;
-        public KeyDialog(string action)
-        {
-            Text = "Set key";
-            Font = new Font("Segoe UI", 9f);
-            AutoScaleMode = AutoScaleMode.None;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = MinimizeBox = false;
-            StartPosition = FormStartPosition.CenterParent;
-            Func<int, int> S = MainForm.S;
-            ClientSize = new Size(S(440), S(160));
-            KeyPreview = true;
-            var l = new Label { Text = "Press the key or combination for \"" + action + "\".\nEsc cancels.", Location = new Point(S(16), S(14)), Size = new Size(S(410), S(40)) };
-            shown = new Label { Text = "", Location = new Point(S(16), S(60)), Size = new Size(S(410), S(30)), Font = new Font("Segoe UI", 13f, FontStyle.Bold) };
-            var none = new Button { Text = "No key", Location = new Point(S(16), S(112)), Size = new Size(S(100), S(32)) };
-            none.Click += delegate { Result = "none"; DialogResult = DialogResult.OK; };
-            var cancel = new Button { Text = "Cancel", Location = new Point(S(324), S(112)), Size = new Size(S(100), S(32)), DialogResult = DialogResult.Cancel };
-            Controls.AddRange(new Control[] { l, shown, none, cancel });
-            CancelButton = cancel;
-            MouseDown += OnMouse;
-            foreach (Control c in Controls) c.MouseDown += OnMouse;
-        }
-        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
-        {
-            Keys code = keyData & Keys.KeyCode;
-            if (code == Keys.Escape) { DialogResult = DialogResult.Cancel; return true; }
-            if (code == Keys.ControlKey || code == Keys.ShiftKey || code == Keys.Menu || code == Keys.LWin || code == Keys.RWin) {
-                shown.Text = Keys2.Display(Keys2.Name(Keys.A, (keyData & Keys.Control) != 0, (keyData & Keys.Shift) != 0, (keyData & Keys.Alt) != 0)).Replace("A", "...");
-                return true;
-            }
-            string n = Keys2.Name(code, (keyData & Keys.Control) != 0, (keyData & Keys.Shift) != 0, (keyData & Keys.Alt) != 0);
-            if (n == null) { shown.Text = "That key can't be used"; return true; }
-            Result = n;
-            DialogResult = DialogResult.OK;
-            return true;
-        }
-        void OnMouse(object s, MouseEventArgs e)
-        {
-            Keys k = e.Button == MouseButtons.XButton1 ? Keys.XButton1 : e.Button == MouseButtons.XButton2 ? Keys.XButton2 :
-                     e.Button == MouseButtons.Middle ? Keys.MButton : Keys.None;
-            if (k == Keys.None) return;
-            Result = Keys2.Name(k, ModifierKeys.HasFlag(Keys.Control), ModifierKeys.HasFlag(Keys.Shift), ModifierKeys.HasFlag(Keys.Alt));
-            DialogResult = DialogResult.OK;
-        }
-    }
-
-    // ------------------------------------------------------------------------------------------------ the window
-    class MainForm : Form
-    {
-        List<Game> games;
-        Game game;
-        IniFile ini;
-        Dictionary<string, string> values = new Dictionary<string, string>();  // (what the controls show, as ini text)
-        ComboBox gameBox;
-        TabControl tabs;
-        CheckBox advanced;
-        Label status, warn;
-        Button save, revert;
-        ToolTip tips = new ToolTip { AutoPopDelay = 20000, InitialDelay = 300 };
-        bool loading, dirty, wasLive;
-        int shownGame = -1;
-        // (pixel sizes are for 96 dpi and scaled to the screen's: the process is dpi-aware, so text stays sharp on 4K screens)
-        public static float UiScale = 1f;
-        public static int S(int v) { return (int)Math.Round(v * UiScale); }
-        static Size Sz(int w, int h) { return new Size(S(w), S(h)); }
-        static Point Pt(int x, int y) { return new Point(S(x), S(y)); }
-
-        public MainForm()
-        {
-            Text = "MHFZ Plus Settings";
-            try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
-            AutoScaleMode = AutoScaleMode.None;
-            using (var g = CreateGraphics()) UiScale = Math.Max(1f, g.DpiX / 96f);
-            Font = new Font("Segoe UI", 9f);
-            ClientSize = Sz(780, 620);
-            MinimumSize = Sz(660, 480);
-            StartPosition = FormStartPosition.CenterScreen;
-
-            var top = new Panel { Dock = DockStyle.Top, Height = S(44) };
-            top.Controls.Add(new Label { Text = "Game:", Location = Pt(12, 13), AutoSize = true });
-            gameBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Location = Pt(60, 10), Width = S(200) };
-            gameBox.SelectedIndexChanged += delegate {
-                if (gameBox.SelectedIndex == shownGame) return;
-                if (!ConfirmDiscard()) { gameBox.SelectedIndex = shownGame; return; }
-                shownGame = gameBox.SelectedIndex;
-                game = games[shownGame];
-                LoadGame();
-            };
-            top.Controls.Add(gameBox);
-            advanced = new CheckBox { Text = "Show advanced settings", Location = Pt(290, 12), AutoSize = true };
-            advanced.CheckedChanged += delegate { Build(); };
-            top.Controls.Add(advanced);
-
-            var bottom = new Panel { Dock = DockStyle.Bottom, Height = S(84) };
-            status = new Label { Location = Pt(12, 6), Size = Sz(750, 18), ForeColor = Color.DimGray, AutoEllipsis = true, Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top };
-            warn = new Label { Location = Pt(12, 25), Size = Sz(750, 18), ForeColor = Color.Firebrick, AutoEllipsis = true, Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top };
-            save = new Button { Text = "Save", Size = Sz(96, 30), Anchor = AnchorStyles.Right | AnchorStyles.Bottom };
-            revert = new Button { Text = "Undo changes", Size = Sz(110, 30), Anchor = AnchorStyles.Right | AnchorStyles.Bottom };
-            var defaults = new Button { Text = "Recommended settings", Size = Sz(170, 30), Anchor = AnchorStyles.Left | AnchorStyles.Bottom };
-            var openFile = new Button { Text = "Open the file", Size = Sz(110, 30), Anchor = AnchorStyles.Left | AnchorStyles.Bottom };
-            save.Location = new Point(bottom.Width - S(108), S(46)); revert.Location = new Point(bottom.Width - S(226), S(46));
-            defaults.Location = Pt(12, 46); openFile.Location = Pt(190, 46);
-            save.Click += delegate { Save(); };
-            revert.Click += delegate { LoadGame(); };
-            defaults.Click += delegate { Recommended(); };
-            openFile.Click += delegate { if (game != null && File.Exists(game.IniPath)) Process.Start("notepad.exe", "\"" + game.IniPath + "\""); };
-            // (the game starting or closing changes where its settings are on Rain: keep the status line current)
-            var poll = new Timer { Interval = 2000 };
-            poll.Tick += delegate { if (game != null && game.Live != wasLive) UpdateStatus(); };
-            poll.Start();
-            bottom.Controls.AddRange(new Control[] { status, warn, save, revert, defaults, openFile });
-            bottom.Resize += delegate { save.Left = bottom.Width - S(108); revert.Left = bottom.Width - S(226); };
-
-            tabs = new TabControl { Dock = DockStyle.Fill };
-            Controls.Add(tabs);
-            Controls.Add(top);
-            Controls.Add(bottom);
-
-            games = Game.Load(Game.FindBase());
-            if (games.Count == 0) {
-                status.Text = "No game set up yet: run the MHFZ Plus setup first.";
-                save.Enabled = revert.Enabled = defaults.Enabled = openFile.Enabled = false;
-                return;
-            }
-            foreach (var g in games) gameBox.Items.Add(g.Title);
-            gameBox.SelectedIndex = 0;  // (loads it)
-        }
-
-        protected override void OnShown(EventArgs e)
-        {
-            base.OnShown(e);
-            // (testing: MHFZPLUS_SETTINGS_SHOTS=<folder> draws every page into PNGs - plain, then with the advanced settings - and exits)
-            string shots = Environment.GetEnvironmentVariable("MHFZPLUS_SETTINGS_SHOTS");
-            if (!string.IsNullOrEmpty(shots)) {
-                Directory.CreateDirectory(shots);
-                for (int pass = 0; pass < 2; pass++) {
-                    advanced.Checked = pass == 1;
-                    for (int i = 0; i < tabs.TabCount; i++) {
-                        tabs.SelectedIndex = i;
-                        Application.DoEvents();
-                        using (var bmp = new Bitmap(Width, Height)) {
-                            DrawToBitmap(bmp, new Rectangle(0, 0, Width, Height));
-                            bmp.Save(Path.Combine(shots, string.Format("{0}{1}-{2}.png", pass, i, tabs.TabPages[i].Text.Replace(" ", ""))));
-                        }
-                    }
-                }
-                dirty = false;
-                Close();
-            }
-        }
-        bool ConfirmDiscard()
-        {
-            if (!dirty) return true;
-            var r = MessageBox.Show(this, "Save your changes first?", Text, MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
-            if (r == DialogResult.Cancel) return false;
-            if (r == DialogResult.Yes) Save();
-            return true;
-        }
-        protected override void OnFormClosing(FormClosingEventArgs e)
-        {
-            if (!ConfirmDiscard()) e.Cancel = true;
-            base.OnFormClosing(e);
-        }
-
-        void LoadGame()
-        {
-            string path = game.IniPath;
-            if (!File.Exists(path) && File.Exists(game.DefaultIni)) {  // (no settings of the player's own yet: start from the defaults)
-                Directory.CreateDirectory(Path.GetDirectoryName(path));
-                File.Copy(game.DefaultIni, path);
-            }
-            ini = new IniFile(path);
-            values.Clear();
-            foreach (var s in Schema.All()) {
-                string v = ini.Get(s.Key);
-                values[s.Key] = v == null ? s.Default : s.Kind == Kind.Key ? Keys2.Normalize(v) : v;
-            }
-            if (string.Equals(values["d3d9_backend"], game.BundledDxvk, StringComparison.OrdinalIgnoreCase)) values["d3d9_backend"] = "dxvk";
-            dirty = false;
-            Build();
-            UpdateStatus();
-        }
-
-        void UpdateStatus()
-        {
-            if (game == null) return;
-            wasLive = game.Live;
-            status.Text = (wasLive ? "The game is running: changes apply in the game as soon as you save. " :
-                           game.Mode == "swap" ? "Changes apply the next time you start the game. " : "Changes apply at once if the game runs. ") + game.IniPath;
-        }
-
-        void Recommended()
-        {
-            if (MessageBox.Show(this, "Set every setting on this page and the advanced ones back to the recommended values?\n(Keys too.)", Text,
-                                MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
-            foreach (var s in Schema.All()) if (s.Key != "d3d9_backend") values[s.Key] = s.Default;  // (the backend stays as chosen)
-            dirty = true;
-            Build();
-        }
-
-        void Save()
-        {
-            if (ini == null) return;
-            // the file as it is now, where the game uses it now (Rain: it moves into the game folder while the game runs and
-            // back when it closes - the window may have been open across that)
-            string path = game.IniPath;
-            try {
-                if (!File.Exists(path) && File.Exists(game.DefaultIni)) {
-                    Directory.CreateDirectory(Path.GetDirectoryName(path));
-                    File.Copy(game.DefaultIni, path);
-                }
-                var cur = new IniFile(path);
-                if (values["d3d9_backend"] == "dxvk" && !File.Exists(game.BundledDxvk)) {
-                    MessageBox.Show(this, "DXVK isn't installed yet. Run the MHFZ Plus setup (1.3 or newer) to add it; until then the game uses " +
-                                    "Windows' Direct3D.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
-                foreach (var s in Schema.All()) {
-                    string v = values[s.Key];
-                    if (s.Key == "d3d9_backend" && v == "dxvk") v = game.BundledDxvk;
-                    string old = cur.Get(s.Key);
-                    // (only what differs from what is there, or from the default when the file doesn't name it)
-                    if (old == null ? v == s.Default : (s.Kind == Kind.Key ? Keys2.Normalize(old) == v : old == v)) continue;
-                    cur.Set(s.Key, v);
-                }
-                cur.Save();
-                ini = cur;
-                dirty = false;
-                UpdateWarnings();
-                UpdateStatus();
-            }
-            catch (Exception ex) { MessageBox.Show(this, "Could not save " + path + ":\n" + ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error); }
-        }
-
-        void Changed(string key, string v)
-        {
-            if (loading) return;
-            values[key] = v;
-            dirty = true;
-            UpdateWarnings();
-        }
-
-        void UpdateWarnings()
-        {
-            var keys = Schema.All().Where(s => s.Kind == Kind.Key && values[s.Key] != "none").ToList();
-            var dup = keys.GroupBy(s => values[s.Key]).Where(g => g.Count() > 1).Select(g => Keys2.Display(g.Key)).ToList();
-            var game = keys.Where(s => Keys2.GameKey(values[s.Key])).Select(s => Keys2.Display(values[s.Key])).ToList();
-            var msg = new List<string>();
-            if (dup.Count > 0) msg.Add("The same key is set twice: " + string.Join(", ", dup) + ".");
-            if (game.Count > 0) msg.Add("The game uses " + string.Join(", ", game) + " itself - pressing it will do both.");
-            if (values["retro"] == "0" && values["key_capture"] != "none") msg.Add("The clip recorder is off: the clip key does nothing.");
-            warn.Text = string.Join("  ", msg);
-            save.Text = dirty ? "Save *" : "Save";
-        }
-
-        // the pages, built from the schema
-        void Build()
-        {
-            loading = true;
-            int sel = tabs.SelectedIndex;
-            tabs.SuspendLayout();
-            tabs.TabPages.Clear();
-            var groups = new List<string>();
-            foreach (var s in Schema.All()) if (!groups.Contains(s.Group)) groups.Add(s.Group);
-            foreach (string g in groups) {
-                var items = Schema.All().Where(s => s.Group == g && (advanced.Checked || !s.Advanced)).ToList();
-                if (items.Count == 0) continue;
-                var page = new TabPage(g) { AutoScroll = true, Padding = new Padding(S(8)) };
-                var table = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Dock = DockStyle.Top, Padding = new Padding(S(4)) };
-                table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, S(320)));
-                table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, S(390)));
-                foreach (var s in items) AddRow(table, s);
-                if (g == "Clips") AddClipInfo(table);
-                page.Controls.Add(table);
-                tabs.TabPages.Add(page);
-            }
-            if (sel >= 0 && sel < tabs.TabCount) tabs.SelectedIndex = sel;
-            tabs.ResumeLayout();
-            loading = false;
-            UpdateWarnings();
-        }
-
-        void AddRow(TableLayoutPanel t, Setting s)
-        {
-            var label = new Label { Text = s.Label, AutoSize = true, Margin = new Padding(S(3), S(7), S(3), S(3)), MaximumSize = new Size(S(310), 0) };
-            Control c;
-            string v = values[s.Key];
-            switch (s.Kind) {
-                case Kind.Bool: {
-                    var cb = new CheckBox { Checked = v.Trim() != "0" && v.Trim() != "", AutoSize = true, Margin = new Padding(S(3), S(7), S(3), S(3)) };
-                    cb.CheckedChanged += delegate { Changed(s.Key, cb.Checked ? "1" : "0"); };
-                    c = cb;
-                    break;
-                }
-                case Kind.Int: {
-                    int n; int.TryParse(v, out n);
-                    var nu = new NumericUpDown { Minimum = s.Min, Maximum = s.Max, Value = Math.Max(s.Min, Math.Min(s.Max, n)), Width = S(100) };
-                    nu.ValueChanged += delegate { Changed(s.Key, ((int)nu.Value).ToString()); };
-                    c = nu;
-                    break;
-                }
-                case Kind.Choice: {
-                    var cbx = new ComboBox { Width = S(370), DropDownStyle = s.Editable ? ComboBoxStyle.DropDown : ComboBoxStyle.DropDownList };
-                    foreach (var ch in s.Choices) cbx.Items.Add(ch[1]);
-                    int idx = Array.FindIndex(s.Choices, ch => ch[0] == v);
-                    if (idx >= 0) cbx.SelectedIndex = idx; else if (s.Editable) cbx.Text = v;
-                    else { cbx.Items.Add(v + " (custom)"); cbx.SelectedIndex = cbx.Items.Count - 1; }
-                    EventHandler upd = delegate {
-                        int i = cbx.SelectedIndex;
-                        if (i >= 0 && i < s.Choices.Length) Changed(s.Key, s.Choices[i][0]);
-                        else if (s.Editable) { int x; if (int.TryParse(cbx.Text.Trim(), out x) && x >= 0) Changed(s.Key, x.ToString()); }
-                    };
-                    cbx.SelectedIndexChanged += upd;
-                    if (s.Editable) cbx.TextChanged += upd;
-                    c = cbx;
-                    break;
-                }
-                case Kind.Key: {
-                    var b = new Button { Text = Keys2.Display(v), Width = S(200), Height = S(28) };
-                    b.Click += delegate {
-                        using (var d = new KeyDialog(s.Label)) {
-                            if (d.ShowDialog(this) == DialogResult.OK && d.Result != null) { Changed(s.Key, d.Result); b.Text = Keys2.Display(d.Result); }
-                        }
-                    };
-                    c = b;
-                    break;
-                }
-                default: {
-                    var tb = new TextBox { Text = v, Width = S(370) };
-                    tb.TextChanged += delegate { Changed(s.Key, tb.Text.Trim()); };
-                    c = tb;
-                    break;
-                }
-            }
-            if (s.Help != "") { tips.SetToolTip(label, s.Help); tips.SetToolTip(c, s.Help); }
-            t.Controls.Add(label);
-            t.Controls.Add(c);
-            if (s.Help != "") {
-                var h = new Label { Text = s.Help, AutoSize = true, ForeColor = Color.DimGray, MaximumSize = new Size(S(690), 0), Margin = new Padding(S(3), 0, S(3), S(8)) };
-                t.Controls.Add(h);
-                t.SetColumnSpan(h, 2);
-            }
-        }
-
-        void AddClipInfo(TableLayoutPanel t)
-        {
-            var sz = Screen.PrimaryScreen.Bounds.Size;
-            int frames; int.TryParse(values["retro_frames"], out frames);
-            double mb = frames * (sz.Width / 2.0) * (sz.Height / 2.0) * 4 / (1024 * 1024);
-            var info = new Label { Text = string.Format("At {0}x{1}: about {2:0} MB of video memory for {3} frames.", sz.Width, sz.Height, mb, frames),
-                                   AutoSize = true, Margin = new Padding(S(3), S(10), S(3), S(3)) };
-            var open = new Button { Text = "Open the clips folder", Width = S(200), Height = S(30) };
-            open.Click += delegate {
-                string d = game.ClipsDir;
-                if (Directory.Exists(d)) Process.Start("explorer.exe", "\"" + d + "\"");
-                else MessageBox.Show(this, "No clips yet. They are saved in:\n" + d, Text);
-            };
-            t.Controls.Add(info);
-            t.SetColumnSpan(info, 2);
-            t.Controls.Add(open);
-        }
-    }
 
     static class Program
     {
@@ -756,15 +394,63 @@ namespace MhfzPlus
             return 0;
         }
 
+        [DllImport("user32")] static extern bool SetForegroundWindow(IntPtr h);
+        [DllImport("user32")] static extern bool ShowWindow(IntPtr h, int cmd);
+        [DllImport("user32")] static extern bool IsIconic(IntPtr h);
+
         [STAThread]
         static int Main(string[] args)
         {
-            if (args.Length > 0) return Cli(args);
             try { SetProcessDPIAware(); } catch { }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new MainForm());
+            if (args.Length == 2 && args[0] == "--shots") return HubForm.Shots(args[1]);   // (testing: every page into PNGs)
+            if (args.Length > 0) return Cli(args);
+            // one MHFZ Plus window: opening it again (a second click on the shortcut, Steam) brings the open one forward
+            bool first;
+            using (var one = new Mutex(true, @"Local\MHFZ-Plus-App", out first)) {
+                if (!first) { ShowOpenWindow(); return 0; }
+                // a problem nobody caught: written to MHFZ-Plus-App.log (bug reports include it), said in plain words,
+                // and the window closes - not .NET's crash dialog, and not a window that keeps failing to draw
+                Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+                Application.ThreadException += (s, e) => Crash(e.Exception);
+                AppDomain.CurrentDomain.UnhandledException += (s, e) => Crash(e.ExceptionObject as Exception);
+                Application.Run(new HubForm(0));
+            }
             return 0;
+        }
+        static void ShowOpenWindow()
+        {
+            try {
+                var me = Process.GetCurrentProcess();
+                foreach (var p in Process.GetProcessesByName(me.ProcessName)) {
+                    if (p.Id == me.Id || p.MainWindowHandle == IntPtr.Zero) continue;
+                    if (IsIconic(p.MainWindowHandle)) ShowWindow(p.MainWindowHandle, 9);   // SW_RESTORE
+                    SetForegroundWindow(p.MainWindowHandle);
+                    return;
+                }
+            } catch { }
+        }
+        static int crashed;
+        public static void LogApp(string what)
+        {
+            try {
+                File.AppendAllText(Path.Combine(Game.FindBase(), "MHFZ-Plus-App.log"),
+                                   DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + what + "\r\n", new UTF8Encoding(false));
+            } catch { }
+        }
+        static void Crash(Exception ex)
+        {
+            if (Interlocked.Increment(ref crashed) > 1) return;   // (one message, however many follow)
+            string version = "?";
+            try { version = File.ReadAllLines(Path.Combine(Game.FindBase(), "version.txt"))[0].Trim(); } catch { }
+            LogApp("MHFZ Plus " + version + " ran into a problem and closed:\r\n" + ex);
+            try {
+                MessageBox.Show("MHFZ Plus ran into a problem and has to close: " + (ex != null ? ex.Message : "unknown error") +
+                                "\n\nA game you started keeps running. Open MHFZ Plus again to carry on.\n\nThe details are in MHFZ-Plus-App.log " +
+                                "in the MHFZ Plus folder; Help > Make a bug report includes it.", "MHFZ Plus", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            } catch { }
+            Environment.Exit(2);
         }
     }
 }
