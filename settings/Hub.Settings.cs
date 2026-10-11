@@ -102,8 +102,9 @@ namespace MhfzPlus
                 Options = new[] { new[] { "0", "OFF" }, new[] { "1", "ON" } }, Get = () => IniGet("general", "close_on_start", "0"), Set = v => IniPut("general", "close_on_start", v) });
             rows.Add(new AppRow { Label = "Check for updates", Help = "When this window opens, at most once a day: asks GitHub for the newest version number. Nothing else is sent.",
                 Options = new[] { new[] { "1", "ON" }, new[] { "0", "OFF" } }, Get = () => IniGet("general", "update_check", "1"), Set = v => IniPut("general", "update_check", v) });
-            rows.Add(new AppRow { Label = "Animations", Help = "Menus that move like the game's. Off: everything appears at once." + (winAnims ? "" : " Windows' own animation effects are off, so they stay off here too."),
-                Options = new[] { new[] { "1", "ON" }, new[] { "0", "OFF" } }, Get = () => IniGet("general", "animations", "1"),
+            rows.Add(new AppRow { Label = "Animations", Help = "Menus that move like the game's. Off: everything appears at once." +
+                    (!winAnims ? " Windows' own animation effects are off, so they stay off here too." : wine ? " Off by default on Linux: Wine draws this window slowly." : ""),
+                Options = new[] { new[] { "1", "ON" }, new[] { "0", "OFF" } }, Get = () => IniGet("general", "animations", AnimDefault),
                 Set = v => { IniPut("general", "animations", v); animSetting = v != "0"; Tween.Off = !(winAnims && animSetting); Kick(); } });
             return rows;
         }

@@ -286,12 +286,15 @@ namespace MhfzPlus
         }
 
         // ---------------------------------------------------------------- animations
+        // on by default; off under Wine (Linux, Steam Deck), whose GDI+ draws this window 10-25x slower (64-171 ms a
+        // frame, and a small area costs nearly as much): the idle movement alone would keep a CPU core busy
+        string AnimDefault { get { return wine ? "0" : "1"; } }
         void SetupAnimations()
         {
             int on = 1;
             try { if (!SystemParametersInfo(0x1042, 0, ref on, 0)) on = 1; } catch { on = 1; }   // SPI_GETCLIENTAREAANIMATION: Windows' "Animation effects"
             winAnims = on != 0;
-            animSetting = IniGet("general", "animations", "1") != "0";
+            animSetting = IniGet("general", "animations", AnimDefault) != "0";
             Tween.Off = !(winAnims && animSetting);
             Func<float, Tween> L = v => { var t = new Tween(v); layout.Add(t); return t; };
             homeAmt = L(1); panelH = L(486); panelOpen = L(1); unroll = L(1);

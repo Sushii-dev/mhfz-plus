@@ -1,4 +1,4 @@
-MHFZ Plus 1.4.0
+MHFZ Plus 1.4.1
 ===============
 
 English translation and high frame rate for Monster Hunter Frontier Z, on the MezeLounge and Rain servers.
@@ -169,7 +169,8 @@ and client.exe only. Your app menu gets one entry, "MHFZ Plus": the same app as 
 like the game), with Play, Settings and Help.
   * The MHFZ Plus app is a Windows program too and needs Wine Mono (Proton includes it; plain Wine offers to
     install it the first time). Without it, play with  mhfz-plus play rain  (or meze) and edit mhfz-fps.ini in the
-    MHFZ Plus folder with a text editor.
+    MHFZ Plus folder with a text editor. Its animations are off on Linux (Wine draws the window slowly); Settings >
+    MHFZ Plus > Animations turns them on.
   * DXVK needs 32-bit Vulkan drivers (the lib32 / i386 Vulkan packages); Steam and most gaming setups have them.
     Without them the game falls back to Wine's own Direct3D.
   * If the frame-rate mod doesn't start under Lutris or Bottles, turn DXVK on for the game there and try again.
