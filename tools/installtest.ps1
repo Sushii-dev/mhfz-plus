@@ -32,8 +32,17 @@ $origVdf = if (Test-Path "$s\steamcfg\shortcuts.vdf") { OtherEntries } else { ''
 function Ours { (Read-VdfBinary ([IO.File]::ReadAllBytes("$s\steamcfg\shortcuts.vdf")))['shortcuts'].Values | Where-Object { Test-OurShortcut $_ } }
 
 "=== install"
-$r = powershell -NoProfile -ExecutionPolicy Bypass -File $setup -Unattended -Test -MezeDir "$sim\meze" -RainDir "$sim\rain" -Target "$s\Plüs A" -SteamConfig "$s\steamcfg" -Steam 2>&1
+# (shortcuts into a folder of the test, so setup's shortcut part runs here too: 1.4.0/1.4.1 failed right there)
+$links = Join-Path $s 'links'
+New-Item -ItemType Directory -Force "$links\Desktop" | Out-Null
+Set-Content "$links\Desktop\MHF-Z Rain (Plus).lnk" 'a 1.3 shortcut'   # (setup removes these)
+$r = powershell -NoProfile -ExecutionPolicy Bypass -File $setup -Unattended -Test -LinkDir $links -MezeDir "$sim\meze" -RainDir "$sim\rain" -Target "$s\Plüs A" -SteamConfig "$s\steamcfg" -Steam 2>&1
 $r | ForEach-Object { "    $_" }
+Check (-not ($r -match 'Setup failed|not recognized|Exception')) 'setup ran to its end'
+$lnk = Join-Path $links 'Programs\MHFZ Plus.lnk'
+$target = if (Test-Path $lnk) { (New-Object -ComObject WScript.Shell).CreateShortcut($lnk).TargetPath } else { '' }
+Check ($target -like '*\Plüs A\MHFZ-Plus-App.exe') "Start menu shortcut to the MHFZ Plus app ($target)"
+Check (-not (Test-Path "$links\Desktop\MHF-Z Rain (Plus).lnk")) 'the 1.3 desktop shortcut removed'
 Check ($r -match 'meze: English ready \(41') 'meze English prepared'
 Check ($r -match 'rain: English ready \(40') 'rain English prepared'
 $o = @(Ours)
@@ -46,7 +55,10 @@ Check ((Test-Path "$s\Plüs A\fps\dxvk\d3d9.dll") -and (Test-Path "$s\Plüs A\fp
 Check ($dxvkIni -match '^d3d9_backend=.*\\Plüs A\\fps\\dxvk\\d3d9\.dll$') "settings use the bundled DXVK ($dxvkIni)"
 
 "=== reinstall into another folder"
-$r = powershell -NoProfile -ExecutionPolicy Bypass -File $setup -Unattended -Test -MezeDir "$sim\meze" -RainDir "$sim\rain" -Target "$s\Plüs B" -SteamConfig "$s\steamcfg" -Steam 2>&1
+$r = powershell -NoProfile -ExecutionPolicy Bypass -File $setup -Unattended -Test -LinkDir $links -MezeDir "$sim\meze" -RainDir "$sim\rain" -Target "$s\Plüs B" -SteamConfig "$s\steamcfg" -Steam 2>&1
+Check (-not ($r -match 'Setup failed|not recognized|Exception')) 'setup ran to its end'
+$target = if (Test-Path $lnk) { (New-Object -ComObject WScript.Shell).CreateShortcut($lnk).TargetPath } else { '' }
+Check ($target -like '*\Plüs B\MHFZ-Plus-App.exe') "the shortcut follows to the new folder ($target)"
 $o = @(Ours)
 Check ($o.Count -eq 3) "still 3 Steam entries ($($o.Count))"
 Check (($o | ForEach-Object { $_['appid'] }) -join ',' -eq ($ids -join ',')) 'same Steam ids (artwork and play time kept)'

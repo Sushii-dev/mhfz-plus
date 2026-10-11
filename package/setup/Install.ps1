@@ -2,10 +2,12 @@
 # optional desktop, Start menu and Steam shortcuts. Started by Install.cmd.
 #   -Unattended            no window: installs for every game found (add -Steam for the Steam shortcuts)
 #   -Test                  for testing: no registry entry, no shortcuts, Steam only with -SteamConfig folders
+#   -LinkDir <folder>      with -Test: the shortcuts are made there (Programs\, Desktop\) instead of left out
 param([switch]$Unattended, [switch]$Test, [string]$MezeDir = '', [string]$RainDir = '', [string]$Target = '',
       [string]$KitDir = '',   # an earlier English kit (MHFZ-Meze-translation) whose backups can be reused
       [string[]]$SteamConfig = @(), [switch]$Steam, [switch]$NoEnglish, [switch]$NoFps, [switch]$NoDxvk,
-      [string]$Screenshot = '')                            # testing: draw the window into this PNG and exit
+      [string]$Screenshot = '',                            # testing: draw the window into this PNG and exit
+      [string]$LinkDir = '')
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
@@ -174,12 +176,16 @@ function Install-Plus($o) {
         } else { $report += "${s}: the English patch could not be prepared (see MHFZ-Plus-$s.log)" }
     }
 
-    if (-not $Test) {
+    if (-not $Test -or $LinkDir) {
         # one shortcut: the MHFZ Plus app (play, settings, help) in the Start menu and on the desktop, and an
         # "Apps & features" entry. The Start menu folder and per-server shortcuts of 1.3 and older go.
+        # (tests: the shortcuts in -LinkDir, so this part runs in them too; no registry, no icon refresh)
         $shell = New-Object -ComObject WScript.Shell
         $app = Join-Path $dst 'MHFZ-Plus-App.exe'
-        $programs = [Environment]::GetFolderPath('Programs'); $desktop = [Environment]::GetFolderPath('Desktop')
+        if ($LinkDir) {
+            $programs = Join-Path $LinkDir 'Programs'; $desktop = Join-Path $LinkDir 'Desktop'
+            New-Item -ItemType Directory -Force $programs, $desktop | Out-Null
+        } else { $programs = [Environment]::GetFolderPath('Programs'); $desktop = [Environment]::GetFolderPath('Desktop') }
         Remove-Item (Join-Path $programs 'MHFZ Plus') -Recurse -Force -ErrorAction SilentlyContinue
         foreach ($n in $names.Values) { Remove-Item (Join-Path $desktop "$n.lnk") -Force -ErrorAction SilentlyContinue }
         function New-Link($path, $target, $arguments, $desc, $icon = "$app,0") {
@@ -190,6 +196,9 @@ function Install-Plus($o) {
         $what = 'Play Monster Hunter Frontier Z with MHFZ Plus: settings, help and bug reports'
         New-Link (Join-Path $programs 'MHFZ Plus.lnk') $app '' $what
         if ($o.Desktop) { New-Link (Join-Path $desktop 'MHFZ Plus.lnk') $app '' $what }
+        else { Remove-Item (Join-Path $desktop 'MHFZ Plus.lnk') -Force -ErrorAction SilentlyContinue }
+    }
+    if (-not $Test) {
         # Windows shows an updated exe with its old icon from its icon cache: tell the shell the icons changed
         try {
             Add-Type -Namespace MhfzPlus -Name Shell -MemberDefinition '[DllImport("shell32.dll", CharSet = CharSet.Unicode)] public static extern void SHChangeNotify(int e, uint f, string a, IntPtr b);'
@@ -200,7 +209,6 @@ function Install-Plus($o) {
             $ie4 = Join-Path $env:SystemRoot 'System32\ie4uinit.exe'
             if (Test-Path $ie4) { Start-Process $ie4 -ArgumentList '-show' -WindowStyle Hidden }   # (Windows 10/11's own icon refresh)
         } catch { }
-        else { Remove-Item (Join-Path $desktop 'MHFZ Plus.lnk') -Force -ErrorAction SilentlyContinue }
         $ps = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
         $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\MHFZ-Plus'
         New-Item $key -Force | Out-Null
