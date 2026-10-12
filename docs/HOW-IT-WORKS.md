@@ -77,6 +77,18 @@ two reads is lost. With `input_latch=1` (off by default) the mod reads the same 
 milliseconds while the game sleeps and while it draws, and a press the game would have missed is reported as held at
 its next read, once. It hooks only DirectInput's own objects. In the test app, 12 ms taps went from 33% seen to 100%.
 
+The same hook serves `pad_triggers=1` (off by default): an Xbox-type controller (every controller through Steam Input)
+has both triggers on one DirectInput axis the game can't use. The buttons the game's `keyconfig.cfg` gives L2, R2, L3
+and R3 are then set from XInput's triggers and stick clicks as the game reads the controller (`src/padfix.h`).
+
+## The optional orbit camera
+
+With `camera=1` (off by default) the right stick turns a camera that circles the hunter, with its own angle limits,
+smoothing and collision through the game's own queries. It's the one part of MHFZ Plus that writes game memory: once
+per tick, at the game's own `D3DXMatrixLookAtRH` call (hooked inside `d3dx9_43.dll`), the camera's position and target
+and the direction the hunter moves by. It's computed once per tick like the game's camera, so the in-between frames
+follow it. Details: [CAMERA.md](CAMERA.md).
+
 ## Diagnostics built in
 
 - **Clip recorder** (`retro`): the last second of frames stays in video memory; the clip key saves it with what the
@@ -92,6 +104,7 @@ its next read, once. It hooks only DirectInput's own objects. In the test app, 1
 | `src/proxy.cpp`, `src/d3d9.def` | the proxy: loads the real `d3d9.dll` (or DXVK) and forwards its exports |
 | `src/fps.cpp` | everything else: recording, pairing, replay, scheduling, overlay, recorder, settings |
 | `src/vsinfo.h` | shader bytecode analysis: which constants reach the output position |
+| `src/camera.h`, `src/orbit.h` | the optional orbit camera: the game side (hook, checks, collision queries) and its math |
 | `launcher/launcher.cpp` | MHFZ Plus launcher: puts the mod (and the English files) in for a session, takes them out after |
 | `settings/Hub*.cs`, `settings/Anim.cs` | the MHFZ Plus app: Play, Settings and Help in one window, and its animations |
 | `settings/Settings.cs` | the settings model (what each setting is) and the app's command line |

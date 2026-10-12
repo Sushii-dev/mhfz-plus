@@ -1,7 +1,8 @@
 # Credits
 
-MHFZ Plus contains no code from other projects. It does stand on a lot of other people's work: the tools it was
-built and analysed with, the projects that documented the game, and the teams that keep the game playable.
+MHFZ Plus contains no code from other projects, with one exception: the optional orbit camera is based on TYCHKA's
+Frontier Orbit (below). It does stand on a lot of other people's work: the tools it was built and analysed with, the
+projects that documented the game, and the teams that keep the game playable.
 
 ## The game and its community
 
@@ -10,6 +11,10 @@ built and analysed with, the projects that documented the game, and the teams th
   MHFZ Plus is developed and tested against their clients. Neither team has endorsed it.
 - **[Erupe](https://github.com/ZeruLight/Erupe)**, the open-source MHF-Z server emulator (MIT), and its
   contributors made community servers possible.
+- **TYCHKA**'s [Frontier Orbit](https://github.com/Tychkaneg/Frontier-helper) (Frontier Helper), a camera mod for Rain:
+  MHFZ Plus's optional orbit camera is based on its camera logic, its game addresses and its code checks, and the
+  optional controller trigger fix on its LT/RT fix, used with TYCHKA's permission under MIT. The hooks and the
+  integration with the frame-rate mod are MHFZ Plus's own.
 
 ## Tools used to build and analyse the frame-rate mod
 

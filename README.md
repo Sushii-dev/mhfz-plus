@@ -15,7 +15,8 @@ MHFZ Plus is **not yet approved by Rain's staff**. A Rain staff member has asked
 around the anti-cheat until staff have given a green light, and said that anyone who does so is at their own risk.
 
 To be precise about MHFZ Plus: the frame-rate mod doesn't touch the game's anti-cheat. It doesn't patch game code or
-write game memory, and it only changes what's drawn on your screen. But on Rain, the MHFZ Plus launcher puts the mod
+write game memory, and it only changes what's drawn on your screen. (The optional orbit camera, off by default, does
+write the game's camera values: see below.) But on Rain, the MHFZ Plus launcher puts the mod
 (and the English files, if chosen) in after Rain's launcher has checked the game files. That steps around Rain's file
 check, so we consider it covered by the staff's request.
 
@@ -34,7 +35,8 @@ the camera and the UI moved part of the way towards their next position. You see
 second; the game sees nothing different.
 
 It's a `d3d9.dll` placed next to the game. It hooks Direct3D 9 and the game's frame limiter `Sleep` (plus DirectInput,
-if you turn on the optional tap catching). It never patches game code and never writes game memory.
+if you turn on the optional tap catching). It never patches game code and never writes game memory, except for the
+optional orbit camera below.
 
 - In-between frames up to your refresh rate. How many you get depends on your monitor and your CPU: see
   [What frame rate to expect](#what-frame-rate-to-expect).
@@ -42,6 +44,10 @@ if you turn on the optional tap catching). It never patches game code and never 
 - FPS counter, an on/off key to compare, and a clip recorder: a key saves the last second of frames when something
   looks wrong, for bug reports.
 - The MHFZ Plus app: play, every setting, bug reports and help in one window, in Frontier's own style.
+- Optional orbit camera for controllers (off by default): the right stick turns a camera that circles your hunter,
+  smoothly and further up and down than the game's own, with collision, L3 to recenter, and distance, height and
+  shoulder settings. Based on TYCHKA's [Frontier Orbit](https://github.com/Tychkaneg/Frontier-helper). It's the one
+  part of MHFZ Plus that writes game memory (the camera's values, once per tick): see [docs/CAMERA.md](docs/CAMERA.md).
 - Comes with [DXVK](https://github.com/doitsujin/dxvk) (Direct3D 9 on Vulkan) as a one-click option: it halves the CPU time per
   frame, which in our tests meant 50-70% more frames in towns and crowds. Without Vulkan 1.3 the game falls back to
   Windows' Direct3D 9.

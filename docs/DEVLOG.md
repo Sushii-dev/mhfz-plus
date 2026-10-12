@@ -403,6 +403,42 @@ in town.
   RmGetList). The app keeps the download when an update failed; its message offers Update now again.
 - installtest: three update runs with MHFZ-Plus-App.exe held by another process (3 s; all along with FILE_SHARE_DELETE
   as a running image; all along locked).
+
+### 2026-10-11: the orbit camera (opt-in, based on TYCHKA's Frontier Orbit)
+
+- TYCHKA's Frontier Orbit (Frontier Helper, Rain only) replaces the gameplay camera: an orbit from the XInput right
+  stick, collision through the game's own sweep and ground queries. TYCHKA agreed to its use in MHFZ Plus under MIT.
+  Reading its source: it works because it **writes** the camera object's eye/target at the game's LookAt call and the
+  16-bit camera yaw at 0x11c4a168/16a (the hunter walks by it), besides patching the game's import table. A
+  view-only camera (no writes) can't raise the pitch limit or orbit freely: culling, lights and the movement direction
+  follow the game's camera. The owner chose the full camera as the one exception to "never write game memory"
+  (opt-in, off by default; CLAUDE.md, docs/CAMERA.md).
+- Its 13 exact-byte code checks (taken on Rain's client.dll) match MezeLounge's mhfo-hd.dll at the same addresses,
+  address operands included: one layout for both clients. Kept as FNV-1a hashes (no game bytes in the repo).
+- Hook: inside d3dx9_43.dll, not the import table. Windows' copy is hot-patchable (8B FF, 5 bytes of padding); Wine's
+  starts `55 89 E5 57 56` - a 5-byte trampoline. The import slot is only read: if another program takes it (Frontier
+  Helper), MHFZ Plus stands down.
+- Ghidra on 0x10baee10 (the view builder): before the LookAt call the game stores its own view direction at camera
+  +0xa4 and builds the up vector (roll at +0xc0); after it, FUN_10baead0 copies the matrix, target and eye into the
+  object (+0x00, +0x40, +0x4c) and, while blending two cameras, calls LookAt a second time with the same pointers
+  (handled: same view again). FUN_1082c580 copies the game's camera into the object every tick. Suspects if objects
+  blink: anything reading the camera between those two.
+- Changes from Frontier Orbit: a round deadzone; with the window in the background the orbit stays (stick ignored)
+  instead of falling back to the game's camera; dt from QPC (GetTickCount64 steps 15.6 ms); the missing controller
+  asked for once a second (XInputGetState on an empty slot is slow).
+- Under Wine every ReadProcessMemory and window query is a trip to the server: 0.9 ms a tick at first. Map grid read
+  once a tick, ground cells checked once then read plainly, the window in front asked 4 times a second, reads as a
+  memory query plus a copy under Wine: 0.03 ms (Windows 0.016).
+- test\cameratest.cpp (windowless): stand-in game at 0x10000000, real DLL, all checks; with mhfo-hd.dll mapped as
+  data the code checks pass, and fail with one byte changed. linuxtest runs it under Wine. Not tested: the real game.
+- 2026-10-12, the owner on Rain (DualSense Edge through Steam Input): works, smooth, L3 fine; the vertical axis was
+  inverted (fixed: stick up looks up). Log: code checks passed on Rain's client, the direction field 0.0 degrees from
+  the game's camera at the resync, 0.51 ms a tick (longest 1.3) - nearly all the game's own collision queries.
+- Triggers couldn't be bound: Steam Input hands the game a virtual "Controller (XBOX 360 For Windows)"; in DirectInput
+  its triggers share one axis and it has 10 buttons. The game's keyconfig.cfg then had L2/R2 on buttons 8/9 (the stick
+  clicks) and L3/R3 on 10/11 (none). pad_triggers=1 (padfix.h, in the DirectInput hook input_latch uses): for an
+  Xbox-type device (path with IG_, or Xbox in its name) the buttons keyconfig.cfg names for L2/R2/L3/R3 are set from
+  XInput's triggers (> 30) and stick clicks. TYCHKA's helper did L2/R2 only, which left the stick clicks on L2/R2.
 ## Debug tooling
 
 - **Live config:** the mod re-reads `mhfz-fps.ini` whenever it changes on disk (checked twice a second). Changing `capture_trigger` or `dump_trigger` starts a capture or dump remotely. Isolation switches: `interp_vs`, `interp_xform`, `interp_up`, `interp_ps`, `lerp_nonpos`.

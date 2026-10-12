@@ -17,7 +17,9 @@ where the mod was stuck.
 ## Code changes
 
 - **The rules don't change:** no added input latency, never delay or slow the game's tick, never patch game code
-  or write game memory. A change that breaks one of these won't be merged, however nice the result.
+  or write game memory. A change that breaks one of these won't be merged, however nice the result. The one
+  exception is the opt-in orbit camera ([docs/CAMERA.md](docs/CAMERA.md)): it writes the game's camera and nothing
+  else. Don't widen what it writes, and don't add other writes.
 - **Reproduce first.** If you fix a glitch, add a test-app scene or a recorded sequence that shows it, and show
   the numbers before and after.
 - **Run the gate:** `tools\validate.ps1 -Dll <your build> -Ref <the current release's d3d9.dll>`, and say in the
@@ -34,6 +36,7 @@ Welcome. Say so in the pull request, and say how you tested. See [docs/AI-USAGE.
 
 ## Servers and legal
 
-Don't add anything that changes gameplay, reads or writes game memory, talks to servers, or touches anti-cheat.
+Don't add anything that changes gameplay, reads or writes game memory (beyond the opt-in camera's), talks to
+servers, or touches anti-cheat.
 The Rain launcher mode (files go in after Rain's own file check) is documented in [docs/LEGAL.md](docs/LEGAL.md);
 don't extend that kind of workaround to other checks. Don't commit game files or anything extracted from them.

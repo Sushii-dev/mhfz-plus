@@ -20,8 +20,9 @@ Points not confirmed by a measurement are marked *(believed)*.
 - **Frame end** `0x1000a4c0`: EndScene (through a wrapper), the limiter, then `IDirect3DDevice9::Present`
   (vtable +0x44) and a `Clear`.
 - **Main frame function** `0x108e39c0`. BeginScene goes through a counting wrapper gated by the "on time" flag.
-- The game checks the integrity of parts of its own memory during each tick. The mod never writes game code or game
-  memory, so this needs no special handling. (Details of those checks are deliberately left out here.)
+- The game checks the integrity of parts of its own memory during each tick. The mod never writes game code, and
+  game memory only in the opt-in orbit camera (the camera's position, target and direction, values the game itself
+  changes every tick; see [CAMERA.md](CAMERA.md)). (Details of those checks are deliberately left out here.)
 
 ## Direct3D 9 device
 

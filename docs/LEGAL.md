@@ -45,6 +45,10 @@ MHF-Z is only playable on community-run servers, and each one sets its own rules
 - **What the frame-rate mod changes:** only what's drawn on your screen. It doesn't change game speed, timing, input,
   network traffic or anything the server receives. It doesn't patch game code, doesn't write game memory, and
   doesn't touch the game's own integrity checks.
+- **The optional orbit camera is different** (off unless you turn it on): it writes values inside the running game,
+  the camera's position and target and the direction your hunter walks by, once per tick. Never game code, nothing
+  else. It changes what you see and which way "forward" is, like turning the camera yourself, but a server that
+  forbids changing the client's memory forbids this. Ask before you turn it on. Details: [CAMERA.md](CAMERA.md).
 - **What the launcher changes:** it puts files into the game folder for a play session and takes them out again
   when the game closes, so the game folder is back to its original state between sessions.
 - **Rain, plainly:** Rain's launcher checks the game files before every start. MHFZ Plus waits until that check has

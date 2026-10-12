@@ -19,6 +19,7 @@
 #include <unordered_set>
 #include <algorithm>
 #include "vsinfo.h"
+#include "padfix.h"
 
 #ifdef FPS_SAMPLER
 #define PROF_NOINLINE __attribute__((noinline))  // profiling build: keep functions apart in the samples
@@ -148,6 +149,25 @@ struct Config {
     int camprobe_test = 0;          // testing: the probe watches a variable of the mod's own instead of the game's camera
     int camprobe_trigger = 0;       // changing it while the game runs starts the camera probe (like the key)
     int debug_lost_at = 0;          // testing: the Nth in-between Present reports "device lost" once (it must not stop the mod)
+    // the orbit camera (camera.h, docs/CAMERA.md), opt-in: the right stick turns a camera that circles the hunter. It
+    // writes the game's camera (the one exception to "never write game memory"), so it is off unless chosen
+    int camera = 0;
+    int camera_yaw_speed = 250;     // camera speed: degrees per second at full stick, left and right
+    int camera_tilt_ratio = 70;     // up and down at this % of it (the owner's test: 250 left/right, 150-180 up/down)
+    int camera_look_down = 65, camera_look_up = 35;        // tilt limits: degrees above / below the hunter
+    int camera_reset_tilt = 15;     // after recentering: degrees looking down
+    int camera_smooth = 16;         // how fast the camera catches up with the stick (1/s; higher = snappier)
+    int camera_deadzone = 18;       // % of the stick's travel
+    int camera_distance = 100;      // % of the game's own camera distance
+    int camera_height = 0, camera_shoulder = 0;  // where the camera looks: game units above / to the right of the hunter
+    int camera_invert_x = 0, camera_invert_y = 0;
+    int camera_pad = -1;            // which controller: -1 the first one connected, 0..3
+    int camera_l3 = 1;              // L3 recenters the camera behind the hunter
+    int key_camera = 0x300 | 'C';   // switches the orbit camera off and on while playing (Ctrl+Shift+C)
+    int camera_test = 0;            // testing (test\cameratest.cpp): 1 = a stand-in game without the code checks, the test
+                                    // program's controller, set up when the DLL loads; 2 = the same with the code checks
+    int pad_triggers = 0;           // an Xbox-type controller (any through Steam Input): its triggers and stick clicks are the
+                                    // game's L2/R2/L3/R3 buttons from its keyconfig.cfg (padfix.h; DirectInput, like input_latch)
 } C;
 
 static FILE* g_log;
@@ -489,6 +509,24 @@ static void LoadConfig() {
     C.camprobe_s = std::clamp(I("camprobe_s", C.camprobe_s), 1, 60);
     C.camprobe_test = I("camprobe_test", C.camprobe_test);
     C.camprobe_trigger = I("camprobe_trigger", C.camprobe_trigger);
+    C.camera = I("camera", C.camera);
+    C.camera_yaw_speed = R("camera_yaw_speed", C.camera_yaw_speed, 20, 720);
+    C.camera_tilt_ratio = R("camera_tilt_ratio", C.camera_tilt_ratio, 20, 150);
+    C.camera_look_down = R("camera_look_down", C.camera_look_down, 0, 85);
+    C.camera_look_up = R("camera_look_up", C.camera_look_up, 0, 85);
+    C.camera_reset_tilt = R("camera_reset_tilt", C.camera_reset_tilt, -85, 85);
+    C.camera_smooth = R("camera_smooth", C.camera_smooth, 1, 100);
+    C.camera_deadzone = R("camera_deadzone", C.camera_deadzone, 2, 50);
+    C.camera_distance = R("camera_distance", C.camera_distance, 50, 200);
+    C.camera_height = R("camera_height", C.camera_height, -250, 250);
+    C.camera_shoulder = R("camera_shoulder", C.camera_shoulder, -300, 300);
+    C.camera_invert_x = I("camera_invert_x", C.camera_invert_x);
+    C.camera_invert_y = I("camera_invert_y", C.camera_invert_y);
+    C.camera_pad = R("camera_pad", C.camera_pad, -1, 3);
+    C.camera_l3 = I("camera_l3", C.camera_l3);
+    C.key_camera = K("key_camera", C.key_camera);
+    C.camera_test = I("camera_test", C.camera_test);
+    C.pad_triggers = I("pad_triggers", C.pad_triggers);
     C.debug_lost_at = I("debug_lost_at", C.debug_lost_at);
     C.carry_restore = I("carry_restore", C.carry_restore);
     C.late_slot = I("late_slot", C.late_slot);
@@ -8097,6 +8135,51 @@ static bool WaitGpuUntil(int64_t until) {
 }
 
 // ------------------------------------------------------------------------------------------------ input latch
+// XInput, for the orbit camera and pad_triggers: loaded the first time it's needed, not with the DLL (Rain's client
+// crashed when another library came in with d3d9.dll). camera_test: the test program's stand-in controller instead.
+struct XPad { DWORD packet; WORD buttons; BYTE lt, rt; SHORT lx, ly, rx, ry; };  // (XINPUT_STATE's layout)
+typedef DWORD(WINAPI* XPadRead_t)(DWORD, XPad*);
+static XPadRead_t XPadReader() {
+    static XPadRead_t read;
+    static bool tried;
+    if (tried) return read;
+    tried = true;
+    if (C.camera_test) {  // (mingw exports it with its stdcall suffix)
+        HMODULE exe = GetModuleHandleA(nullptr);
+        read = (XPadRead_t)(void*)GetProcAddress(exe, "CameraTestPad");
+        if (!read) read = (XPadRead_t)(void*)GetProcAddress(exe, "CameraTestPad@8");
+    } else {
+        HMODULE x = LoadLibraryA("xinput1_4.dll");
+        if (!x) x = LoadLibraryA("xinput1_3.dll");
+        if (!x) x = LoadLibraryA("xinput9_1_0.dll");
+        if (x) read = (XPadRead_t)(void*)GetProcAddress(x, "XInputGetState");
+    }
+    Log("controller: XInput %s", read ? "found" : "not found");
+    return read;
+}
+// The controller in slot `want` (0..3), or with -1 the first one connected. A missing one is asked for again only once
+// a second: asking an empty slot is slow (milliseconds on some PCs).
+static bool XPadState(int want, XPad* p) {
+    static int slot = -1;
+    static int64_t retry;
+    XPadRead_t read = XPadReader();
+    if (!read) return false;
+    if (want >= 0) return read((DWORD)want, p) == ERROR_SUCCESS;
+    if (slot >= 0 && read((DWORD)slot, p) == ERROR_SUCCESS) return true;
+    slot = -1;
+    if (Qpc() < retry) return false;
+    retry = Qpc() + g_qpf.QuadPart;
+    static int said = -1;
+    for (DWORD i = 0; i < 4; i++)
+        if (read(i, p) == ERROR_SUCCESS) {
+            slot = (int)i;
+            if (said != slot) Log("controller: XInput slot %d", slot);
+            said = slot;
+            return true;
+        }
+    return false;
+}
+
 // MHF reads keyboard, mouse and gamepads through DirectInput 8 in immediate mode: GetDeviceState once per tick. A press
 // that starts and ends between two of those reads (a quick tap, under ~34 ms) is never seen; in a menu that reads as
 // "pressed, nothing happened". With input_latch=1 the mod reads the same devices again while the game sleeps in its
@@ -8118,6 +8201,7 @@ struct LatchDev {
     uint8_t gave[272];   // what the game got at its last read
     uint32_t povSeen, povGave;  // first POV hat: a direction sampled since the last read / what the game got (0xFFFFxxxx: centred)
     bool sampled;
+    bool xpad;  // an Xbox-type controller (pad_triggers)
 };
 static LatchDev g_ld[8];
 static int g_ldN;
@@ -8140,6 +8224,84 @@ static void* DiOrig(DiVt* t, volatile LONG& n, void* self) {
     for (LONG i = 0, e = n; i < e; i++) if (t[i].vt == vt) return t[i].orig;
     return nullptr;
 }
+// pad_triggers (padfix.h). An Xbox-type controller: its device path has "IG_" (XInput's HID devices), or its name says
+// Xbox (Steam Input's virtual controller is "Controller (XBOX 360 For Windows)"). Asked once per device, through
+// GetProperty, whose path and name are Unicode on both interfaces.
+static bool DiIsXPad(void* dev) {
+    typedef HRESULT(WINAPI * GetProp_t)(void*, const GUID*, void*);  // IDirectInputDevice8::GetProperty (5)
+    auto prop = (GetProp_t)(*(void***)dev)[5];
+    struct { DWORD size, headerSize, obj, how; GUID cls; wchar_t path[MAX_PATH]; } gp = {sizeof gp, 16, 0, 0, {}, {}};
+    struct { DWORD size, headerSize, obj, how; wchar_t name[MAX_PATH]; } pn = {sizeof pn, 16, 0, 0, {}};
+    bool ig = SUCCEEDED(prop(dev, (const GUID*)(ULONG_PTR)12, &gp)) && (wcsstr(gp.path, L"IG_") || wcsstr(gp.path, L"ig_"));  // DIPROP_GUIDANDPATH
+    bool named = SUCCEEDED(prop(dev, (const GUID*)(ULONG_PTR)18, &pn));  // DIPROP_PRODUCTNAME
+    bool xbox = named && (wcsstr(pn.name, L"XBOX") || wcsstr(pn.name, L"Xbox") || wcsstr(pn.name, L"xbox"));
+    char name[MAX_PATH * 3] = "";
+    if (named) WideCharToMultiByte(CP_UTF8, 0, pn.name, -1, name, sizeof name, nullptr, nullptr);
+    Log("input: device %p \"%s\" is %san Xbox-type controller", dev, name, ig || xbox ? "" : "not ");
+    return ig || xbox;
+}
+// The game's L2/R2/L3/R3 buttons from its keyconfig.cfg (next to its exe; the game writes it when its key settings
+// change: looked at every 2 seconds, read again when it changed).
+static PadMap g_padMap;
+static uint64_t g_padReads, g_padPressed;
+static const PadMap& PadMapNow() {
+    static int64_t next;
+    static FILETIME seen;
+    static bool have, said;
+    if (Qpc() < next) return g_padMap;
+    next = Qpc() + g_qpf.QuadPart * 2;
+    wchar_t path[MAX_PATH];
+    GetModuleFileNameW(nullptr, path, MAX_PATH);
+    if (wchar_t* sl = wcsrchr(path, L'\\')) lstrcpynW(sl + 1, L"keyconfig.cfg", MAX_PATH - (int)(sl + 1 - path));
+    WIN32_FILE_ATTRIBUTE_DATA fa;
+    if (!GetFileAttributesExW(path, GetFileExInfoStandard, &fa)) {
+        if (!said) Log("pad_triggers: no keyconfig.cfg next to the game: the game's L2/R2 buttons aren't known - nothing done");
+        said = true;
+        have = false;
+        g_padMap = PadMap{};
+        return g_padMap;
+    }
+    if (have && !CompareFileTime(&fa.ftLastWriteTime, &seen)) return g_padMap;
+    seen = fa.ftLastWriteTime;
+    have = true;
+    static char buf[16384];
+    DWORD got = 0;
+    HANDLE f = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (f != INVALID_HANDLE_VALUE) {
+        if (!ReadFile(f, buf, sizeof buf - 1, &got, nullptr)) got = 0;
+        CloseHandle(f);
+    }
+    buf[got] = 0;
+    g_padMap = PadParse(buf);
+    Log("pad_triggers: keyconfig.cfg: the game's L2 is button %d, R2 %d, L3 %d, R3 %d (-1: none)", g_padMap.l2, g_padMap.r2, g_padMap.l3, g_padMap.r3);
+    return g_padMap;
+}
+// A state an Xbox-type controller gave (the game's read or input_latch's sample): the game's L2/R2/L3/R3 from XInput.
+static void PadApply(uint8_t* s, DWORD cb) {
+    if (cb != 80 && cb != 272) return;  // (DIJOYSTATE, DIJOYSTATE2: buttons from 48)
+    const PadMap& m = PadMapNow();
+    XPad p;
+    if (!XPadState(C.camera_pad, &p)) return;
+    bool lt = p.lt > 30, rt = p.rt > 30, ls = p.buttons & 0x40, rs = p.buttons & 0x80;  // (XInput's trigger threshold, the thumb clicks)
+    {  // (what the triggers do, the first 40 changes: XInput's, and DirectInput's Z axis - the shared trigger axis of an
+       // Xbox-type controller, which the game takes for the right stick's left/right with axes="0x00010205")
+        static int said;
+        static bool l0, r0, zMoved, haveZ;
+        static LONG zRest;
+        LONG z = *(const LONG*)(s + 8);
+        if (!haveZ) { haveZ = true; zRest = z; Log("pad_triggers: the controller's Z axis rests at %ld", z); }
+        bool zm = labs(z - zRest) > 8000;
+        if ((lt != l0 || rt != r0 || zm != zMoved) && said < 40) {
+            said++;
+            Log("pad_triggers: XInput LT %u RT %u, DirectInput Z %ld", p.lt, p.rt, z);
+        }
+        l0 = lt, r0 = rt, zMoved = zm;
+    }
+    if (PadFill(s + 48, cb == 80 ? 32 : 128, m, lt, rt, ls, rs)) {
+        g_padReads++;
+        g_padPressed += lt || rt;
+    }
+}
 static HRESULT WINAPI hk_DiGetState(void* self, DWORD cb, void* data) {
     auto get = (DiGetState_t)DiOrig(g_diStateVt, g_diStateVtN, self);
     if (!get) return E_FAIL;
@@ -8156,9 +8318,11 @@ static HRESULT WINAPI hk_DiGetState(void* self, DWORD cb, void* data) {
         d->povSeen = d->povGave = 0xFFFFFFFF;
         Log("input: the game reads a DirectInput device %p (%lu-byte state, thread %lu%s)", self, cb, GetCurrentThreadId(),
             GetCurrentThreadId() == g_tid ? ", the render thread" : "");
+        d->xpad = pov >= 0 && DiIsXPad(self);
     }
     if (d) {
         uint8_t* s = (uint8_t*)data;
+        if (C.pad_triggers && d->xpad) PadApply(s, cb);  // (first: input_latch's samples got the same)
         if (C.input_latch && d->sampled) {
             int added = 0;
             for (int k = b0; k < b1; k++)
@@ -8190,6 +8354,7 @@ static void InputSample() {
         if (!LatchLayout(d.cb, b0, b1, pov)) continue;
         if (pov >= 0) d.poll(d.dev);  // (gamepads are polled devices: their state only moves on Poll)
         if (FAILED(d.get(d.dev, d.cb, buf))) continue;
+        if (C.pad_triggers && d.xpad) PadApply(buf, d.cb);  // (what the game will be given for this controller)
         for (int k = b0; k < b1; k++) d.seen[k] |= buf[k] & 0x80;
         if (pov >= 0 && LOWORD(*(uint32_t*)(buf + pov)) != 0xFFFF && LOWORD(d.povSeen) == 0xFFFF) d.povSeen = *(uint32_t*)(buf + pov);
         d.sampled = true;
@@ -8219,7 +8384,7 @@ static void InputHooks() {
     HMODULE m = LoadLibraryW(L"dinput8.dll");  // (the game's: a wrapper in its folder comes first, as for the game)
     typedef HRESULT(WINAPI* Create_t)(HINSTANCE, DWORD, REFIID, void**, void*);
     auto create = m ? (Create_t)(void*)GetProcAddress(m, "DirectInput8Create") : nullptr;
-    if (!create) { Log("input: no dinput8.dll - input_latch does nothing"); return; }
+    if (!create) { Log("input: no dinput8.dll - input_latch and pad_triggers do nothing"); return; }
     for (int w = 0; w < 2; w++) {
         void* di = nullptr;
         if (FAILED(create(GetModuleHandleW(nullptr), 0x0800, w ? kIID_DI8W : kIID_DI8A, &di, nullptr)) || !di) continue;
@@ -8238,7 +8403,7 @@ static void InputHooks() {
         }
         ((ULONG(WINAPI*)(void*))divt[2])(di);
     }
-    Log("input: DirectInput hooked for input_latch (%ld device tables)", (long)g_diStateVtN);
+    Log("input: DirectInput hooked (input_latch %d, pad_triggers %d; %ld device tables)", C.input_latch, C.pad_triggers, (long)g_diStateVtN);
 }
 
 // ------------------------------------------------------------------------------------------------ camera probe
@@ -9998,6 +10163,8 @@ static bool KeyEdge(int code) {  // (code: vk | 0x100 ctrl | 0x200 shift | 0x400
     if ((code & 0x400) && !held(VK_MENU)) return false;
     return true;
 }
+#include "camera.h"
+
 // Single keys (usable with one hand while holding a controller) plus the Ctrl+Shift+F-key originals.
 // Capture is delayed so the player can get back on the stick and be moving when it records.
 static int64_t g_capAt;
@@ -10010,7 +10177,8 @@ static void LiveConfig() {
     int cpT = C.camprobe_trigger;
     LoadConfig();
     ApplyVariant();
-    if (C.input_latch) InputHooks();  // (switched on while playing: DirectInput's device class is hooked now)
+    if (C.input_latch || C.pad_triggers) InputHooks();  // (switched on while playing: DirectInput's device class is hooked now)
+    CameraStart();  // (switched on while playing: set up now; it resyncs with the game's camera by itself)
     if (C.trace_trigger != traceT) { g_trWant = true; Log("remote: trace"); }
     if (C.paircap_trigger != pcT) { g_pcLeft = std::max(1, C.paircap_count); g_pcNextTick = 0; Log("remote: %d pairing captures", g_pcLeft); }
     Log("config reloaded: enabled %d mode %d target %d vs %d xform %d up %d ps %d nonpos %d debug %d selfcheck %d (%d ms)",
@@ -10038,6 +10206,7 @@ static void TrackMonitor() {  // the target rate follows the monitor the game wi
 static void Hotkeys() {
     LiveConfig();
     TrackMonitor();
+    CameraPoll();
     if (!C.hotkeys) return;
     // (Ctrl+Shift+F7..F12, developer keys only: the F keys alone are the game's)
     const int cs = 0x300;
@@ -10052,13 +10221,14 @@ static void Hotkeys() {
     bool kLatency = C.key_latency && KeyEdge(C.key_latency);
     bool kCarry = C.key_carry && KeyEdge(C.key_carry);
     bool kCamProbe = C.debug_keys && C.key_camprobe && KeyEdge(C.key_camprobe);
+    bool kCamera = g_camLive && C.key_camera && KeyEdge(C.key_camera);
     if (!C.debug_keys) f7 = f8 = f9 = f10 = f11 = f12 = kDebug = kMode = false;
     if (!C.debug_keys && !C.retro) kCap = false;  // (with the clip recorder on, Delete saves a clip for everyone)
     if (!C.debug_keys) kCamPaths = kCarry = kNonpos = kField = kShadow = false;  // (the A/B switches: developer keys)
     {  // keys only with the game in front: typing elsewhere (Insert, Delete, Pause in another window) must not reach it
         DWORD fgPid = 0;
         GetWindowThreadProcessId(GetForegroundWindow(), &fgPid);
-        if (fgPid != GetCurrentProcessId()) kToggle = kOverlay = kLatency = kShadow = kNonpos = kCamPaths = kField = kCarry = kDebug = kMode = kCap = false;
+        if (fgPid != GetCurrentProcessId()) kToggle = kOverlay = kLatency = kShadow = kNonpos = kCamPaths = kField = kCarry = kDebug = kMode = kCap = kCamera = false;
     }
     if (g_capAt && Qpc() >= g_capAt) {
         g_capAt = 0;
@@ -10108,6 +10278,7 @@ static void Hotkeys() {
     if (kCamPaths) { C.cam_paths = !C.cam_paths; Toast("camera paths %s", C.cam_paths ? "ON" : "OFF"); }
     if (kField) { C.field_match = !C.field_match; Toast("repeated objects by the motion around them %s", C.field_match ? "ON" : "OFF"); }
     if (kCamProbe) CamProbeStart();
+    if (kCamera) CameraToggle();
     if (g_cpMsgReady && InterlockedExchange(&g_cpMsgReady, 0)) Toast("%s", g_cpMsg);
     if (kLatency) { C.latency_trim = !C.latency_trim; Toast("lower input latency %s", C.latency_trim ? "ON" : "OFF"); }
     if (kCarry) {
@@ -10213,6 +10384,7 @@ static void Stats(int64_t now) {
             St.stateSent / (double)std::max<uint64_t>(St.replayN, 1), St.stateSkipped / (double)std::max<uint64_t>(St.replayN, 1),
             St.pvMs / (double)std::max<uint64_t>(St.replayN, 1));
     MemoryCheck();
+    CameraStats();
     if (St.piN)
         Log("  present intervals: mean %.2f ms, deviation %.2f, longest %.2f | closer than one refresh (%.0f Hz): %.1f%%", St.piSum / St.piN,
             std::sqrt(std::max(0.0, St.piSum2 / St.piN - (St.piSum / St.piN) * (St.piSum / St.piN))), St.piMax, g_refresh,
@@ -10258,6 +10430,9 @@ static void Stats(int64_t now) {
     if (C.input_latch || St.inputLatched)
         Log("input_latch: %llu quick presses handed to the game, %llu device reads while it slept (%d devices)",
             (unsigned long long)St.inputLatched, (unsigned long long)St.inputSamples, g_ldN);
+    if (C.pad_triggers)
+        Log("pad_triggers: %llu controller reads given the game's L2/R2/L3/R3, %llu of them with a trigger held",
+            (unsigned long long)g_padReads, (unsigned long long)g_padPressed);
     // recorded commands per frame, most frequent first
     int order[OP_MAX];
     for (int i = 0; i < OP_MAX; i++) order[i] = i;
@@ -10509,7 +10684,8 @@ static HRESULT WINAPI hk_CreateDevice(IDirect3D9* self, UINT ad, D3DDEVTYPE type
         ProfStart(g_realD3D9);
         WatchdogStart();
         bool sl = HookSleep();
-        if (C.input_latch) InputHooks();
+        if (C.input_latch || C.pad_triggers) InputHooks();
+        CameraStart();
         TimerResolution1ms();
         g_timer = CreateWaitableTimerExW(nullptr, nullptr, 0x00000002 /*CREATE_WAITABLE_TIMER_HIGH_RESOLUTION*/, TIMER_ALL_ACCESS);
         if (!g_timer) g_timer = CreateWaitableTimerW(nullptr, FALSE, nullptr);
@@ -10648,6 +10824,7 @@ BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID reserved) {
         GetModuleFileNameA(nullptr, exe, MAX_PATH);
         Log("mhfz-fps (built " __DATE__ " " __TIME__ ") loaded into %s (pid %lu)%s", exe, GetCurrentProcessId(), pinned ? "" : " - could not pin the DLL");
         if (C.exc_log) { AddVectoredExceptionHandler(1, ExcLog); Log("exception log on"); }
+        if (C.camera_test) CameraStart();  // (test\cameratest.cpp: its stand-in game is there before it loads the DLL)
         SetupBackend();
         Log("config: enabled %d mode %d target_fps %d interval %d vs %d xform %d up %d ps %d snap %.2f margin %dus",
             C.enabled, C.mode, C.target_fps, C.present_interval, C.interp_vs, C.interp_xform, C.interp_up, C.interp_ps,

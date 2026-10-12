@@ -23,7 +23,7 @@ using System.Windows.Forms;
 
 [assembly: System.Reflection.AssemblyTitle("MHFZ Plus")]
 [assembly: System.Reflection.AssemblyProduct("MHFZ Plus")]
-[assembly: System.Reflection.AssemblyVersion("1.4.5.0")]
+[assembly: System.Reflection.AssemblyVersion("1.5.0.0")]
 
 namespace MhfzPlus
 {
@@ -82,6 +82,10 @@ namespace MhfzPlus
             Bool("input_latch", "0", "Catch quick button taps (testing)", "The game reads keyboard, mouse and controller once per tick (30 times a " +
                  "second), so a very quick tap can fall between two reads and get lost - in menus it feels like a press that did nothing. " +
                  "With this on, such a tap is caught and handed to the game at its next read. Nothing is delayed.");
+            Bool("pad_triggers", "0", "Controller triggers as L2/R2 (testing)", "Xbox-type controllers - and every controller through Steam " +
+                 "Input, a DualSense too - have both triggers on one axis the game can't use, so L2/R2 can't be put on them. With this " +
+                 "on, the triggers press the game's L2/R2 and the stick clicks its L3/R3 (the buttons in the game's own controller " +
+                 "settings). Nothing is delayed.");
             // ("dxvk" stands for the copy that comes with MHFZ Plus: the ini gets its full path; another path shows as custom)
             Choice("d3d9_backend", "", "Graphics backend", "DXVK runs the game's Direct3D 9 on Vulkan. It needs much less CPU time per frame, so " +
                    "more in-between frames fit: in our tests 50-70% more in towns and crowds. Needs a graphics card with Vulkan 1.3 (most from " +
@@ -98,11 +102,36 @@ namespace MhfzPlus
             Choice("overlay_pos", "0", "Position", "", false, "0", "Top left", "1", "Top right", "2", "Bottom left", "3", "Bottom right", "4", "Top centre");
             Choice("overlay_scale", "0", "Size", "", false, "0", "Automatic", "1", "1x", "2", "2x", "3", "3x", "4", "4x");
 
+            group = "Camera";
+            Bool("camera", "0", "Orbit camera (controller)", "The right stick turns a camera that circles your hunter, smoothly and further up " +
+                 "and down than the game's own; L3 puts it behind you. Based on TYCHKA's Frontier Orbit. The one part of MHFZ Plus that " +
+                 "changes values inside the game (the camera's position and the direction you walk by, once per tick; never the game's code), " +
+                 "so it is off unless you turn it on. MezeLounge and Rain; keyboard and mouse keep the game's camera. Ctrl+Shift+C switches " +
+                 "it while playing.");
+            Int("camera_yaw_speed", "250", 20, 720, "Camera speed", "Degrees per second at full stick, left and right; up and down " +
+                "go at 70% of it (Advanced).");
+            Int("camera_smooth", "16", 1, 100, "Responsiveness", "How quickly the camera catches up with the stick: lower is smoother, higher is snappier.");
+            Int("camera_deadzone", "18", 2, 50, "Stick deadzone (%)", "How far the stick moves before the camera turns.");
+            Int("camera_look_down", "65", 0, 85, "Highest angle (degrees)", "How far the camera can rise above your hunter, looking down.");
+            Int("camera_look_up", "35", 0, 85, "Lowest angle (degrees)", "How far the camera can sink below your hunter, looking up.");
+            Int("camera_distance", "100", 50, 200, "Distance (%)", "Of the game's own camera distance. Walls and the ground still bring the camera closer.");
+            Int("camera_height", "0", -250, 250, "Height", "Raises or lowers the point the camera looks at (game units).");
+            Int("camera_shoulder", "0", -300, 300, "Shoulder offset", "Moves the camera to the right of your hunter (negative: to the left), over the shoulder.");
+            Bool("camera_invert_x", "0", "Invert left/right", "");
+            Bool("camera_invert_y", "0", "Invert up/down", "");
+            Bool("camera_l3", "1", "L3 recenters", "Pressing the left stick puts the camera behind your hunter.");
+            Int("camera_reset_tilt", "15", -85, 85, "Angle after recentering (degrees)", "Positive looks down at your hunter.", true);
+            Int("camera_tilt_ratio", "70", 20, 150, "Up/down speed (% of camera speed)", "Up and down at full stick, as a share of " +
+                "the camera speed.", true);
+            Choice("camera_pad", "-1", "Controller", "Which controller turns the camera.", true,
+                   "-1", "The first one connected", "0", "1", "1", "2", "2", "3", "3", "4");
+
             group = "Keys";
             Key("key_toggle", "pause", "Mod on/off", "Compare with and without the mod while playing.");
             Key("key_overlay", "insert", "FPS counter", "Cycles hidden, counter, detailed.");
             Key("key_capture", "delete", "Save a clip", "Saves the last second of frames when something looks wrong (the clip recorder must be on).");
             Key("key_latency", "ctrl+shift+5", "Lower input latency on/off", "");
+            Key("key_camera", "ctrl+shift+c", "Orbit camera on/off", "Between the orbit camera and the game's own, while playing (the orbit camera must be on under Camera).");
             Bool("debug_keys", "0", "Developer keys", "Turns on the keys below and the Ctrl+Shift+F7..F12 test switches.", true);
             Key("key_campaths", "ctrl+shift+1", "Camera paths on/off", "Developer key (needs developer keys on).", true);
             Key("key_carry", "ctrl+shift+2", "Carried render targets (cycle)", "Developer key.", true);

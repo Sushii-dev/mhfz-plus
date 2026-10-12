@@ -1,4 +1,4 @@
-MHFZ Plus 1.4.5
+MHFZ Plus 1.5.0
 ===============
 
 English translation and high frame rate for Monster Hunter Frontier Z, on the MezeLounge and Rain servers.
@@ -90,7 +90,11 @@ The most used settings ("Advanced" at the bottom of the list shows the rest):
                         Direct3D is used and a message says so. Applies at the next game start.
   Catch quick button taps   optional, off by default: a very quick key or button tap can fall between two of the
                         game's input reads (30 a second) and get lost - a menu press that does nothing. This catches it.
+  Controller triggers as L2/R2 (testing)   off by default: Xbox-type controllers - and every controller through
+                        Steam Input, a DualSense too - have both triggers on one axis the game can't use. With this
+                        on, the triggers press the game's L2/R2 and the stick clicks its L3/R3.
   Keys                  Pause: mod on/off.  Insert: FPS counter.  Delete: save a clip (see REPORTING A PROBLEM).
+                        Ctrl+Shift+C: orbit camera on/off (see ORBIT CAMERA).
                         Keys only work while the game window is in front.
   FPS counter           Press Insert once: frames per second (true frames, game + in-between), the "1% low" (how
                         fast the slowest frames are) and the game's own 30. Press again: the detailed view with
@@ -108,6 +112,22 @@ Notes:
   * If you see a flicker, a flash or something jumping, please report it with a clip (see REPORTING A PROBLEM).
   * Another d3d9.dll in the game folder (ReShade, dgVoodoo...): MHFZ Plus won't touch it and runs without the
     frame-rate mod (it tells you so).
+
+
+ORBIT CAMERA (OPTIONAL, CONTROLLER)
+-----------------------------------
+MHFZ Plus > Settings > Camera. Off unless you turn it on. The right stick turns a camera that circles your hunter,
+smoothly and further up and down than the game's own; walls and the ground bring it closer and it eases back out.
+L3 puts it behind your hunter. Camera speed, smoothing, deadzone, the angle limits, distance, height and a
+shoulder offset are on the same page. Ctrl+Shift+C switches between it and the game's own camera while playing.
+Based on TYCHKA's Frontier Orbit.
+  * It is the one part of MHFZ Plus that changes values inside the running game: the camera's position and the
+    direction your hunter walks by, once per tick. Never the game's code, nothing else. Some servers forbid any
+    change to the client's memory: ask your server before you use it.
+  * MezeLounge and Rain. With a game version it doesn't know, it stays off and the game's camera is used.
+  * Needs a controller Windows sees as an Xbox (XInput) controller - through Steam Input works too. With keyboard
+    and mouse, or without a controller connected, the game's own camera is used.
+  * Don't run it together with Frontier Helper (TYCHKA's camera mod): MHFZ Plus notices and stays off.
 
 
 REPORTING A PROBLEM
@@ -153,7 +173,8 @@ RISK
 ----
 Private servers may treat any modified client as cheating. MHFZ Plus only changes files while you play through
 it, never patches game code, and the frame-rate mod doesn't change game speed or anything the server sees, but
-there are no guarantees. Use it at your own risk.
+there are no guarantees. The optional orbit camera does change the game's camera values in memory (see ORBIT
+CAMERA). Use it at your own risk.
 
 
 UNINSTALL
