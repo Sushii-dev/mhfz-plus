@@ -31,9 +31,9 @@ You need your own copy of the game, installed through a server's official launch
 
 ## The English translation
 
-The launcher can apply an English translation. The translation data isn't in this repository. Where it's
-distributed, it ships as differences against the original files: they only apply to an exact original file the
-player already has, and they're checked by SHA-256 before use. The translated text is machine-generated (see
+The launcher can apply an English translation. The translation data isn't in this repository; the release download
+includes it, as differences against the original files: they only apply to an exact original file the player
+already has, and they're checked by SHA-256 before use. The translated text is machine-generated (see
 [AI-USAGE.md](AI-USAGE.md)).
 
 ## Servers

@@ -1363,14 +1363,16 @@ def backend_of(path):
 
 def install_prefix(setup, games, opts, old, report, keep=False):
     """MHFZ Plus into one prefix for the games found there ({server: Linux folder}). keep (the in-app update): the
-    player's choices stay - the server, English and frame rate per game, the graphics backend (a public download has
-    no English data, and writing its "English off" would switch off a translation someone has)."""
+    player's choices stay - the server, English and frame rate per game, the graphics backend. One exception: English
+    that comes with this update where the install had none (the GitHub download had no English before 1.5.1) is
+    switched on - that "off" was never a choice."""
     prefix = setup['prefix']
     target = old['target'] if old and os.path.isdir(old['target']) else target_of(prefix)
     payload = os.path.join(PKG, 'payload')
     os.makedirs(target, exist_ok=True)
     tpl = os.path.join(target, 'fps', 'mhfz-fps.ini')   # (the default mod settings: new, with the backend they had)
     kept_backend = backend_of(tpl) if keep else ''
+    had_english = {s: os.path.isfile(os.path.join(target, 'english', s, 'manifest.txt')) for s in SERVERS}
     shutil.copytree(payload, target, dirs_exist_ok=True)
     if kept_backend:
         set_backend(tpl, kept_backend)
@@ -1391,6 +1393,9 @@ def install_prefix(setup, games, opts, old, report, keep=False):
         for k in ('english', 'fps'):
             if not (keep and k in sec):
                 sec[k] = str(int(opts[k]))
+        if keep and not had_english[s] and sec.get('english') == '0' and \
+                os.path.isfile(os.path.join(target, 'english', s, 'manifest.txt')):
+            sec['english'] = '1'   # (the English data is new with this update: its "off" was never a choice)
         sec.setdefault('fps_mode', 'stay' if s == 'meze' else 'swap')
     ini_write(ini_path, ini)
 

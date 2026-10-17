@@ -141,6 +141,16 @@ $why = ($u.Out | Where-Object { $_ -match 'update failed' }) -join ' '
 Check ($u.Code -eq 1 -and $why -match 'MHFZ-Plus-App\.exe is in use by another program \(by .+\)') "locked all along: stopped, says by whom ($why)"
 Check (@(Get-ChildItem $B -Recurse -Filter '*.old-*').Count -eq 0) 'the file moved aside last time is gone'
 Set-Content $iniB ((Get-Content $iniB -Encoding Unicode) -replace '^english=0$', 'english=1') -Encoding Unicode
+if (Test-Path (Join-Path (Split-Path (Split-Path $setup)) 'payload\english\meze\manifest.txt')) {
+    # an install from a download without English data (GitHub's before 1.5.1: setup wrote english=0 for both games)
+    Remove-Item "$B\english" -Recurse -Force
+    Set-Content $iniB ((Get-Content $iniB -Encoding Unicode) -replace '^english=1$', 'english=0') -Encoding Unicode
+    $r = powershell -NoProfile -ExecutionPolicy Bypass -File $setup -Unattended -Update -Test -LinkDir $links -Target $B 2>&1
+    $r | ForEach-Object { "    $_" }
+    $sec = ''; $kv = @{}
+    foreach ($l in (Get-Content $iniB -Encoding Unicode)) { if ($l -match '^\[(.+)\]$') { $sec = $Matches[1] } elseif ($l -match '^([^=]+)=(.*)$') { $kv["$sec.$($Matches[1])"] = $Matches[2] } }
+    Check ($kv['meze.english'] -eq '1' -and $kv['rain.english'] -eq '1' -and $r -match 'meze: English ready \(41' -and $r -match 'rain: English ready \(40') "English that comes with the update is switched on and prepared ($($kv['meze.english']) / $($kv['rain.english']))"
+}
 
 "=== Steam's file kept safe (a layout we don't know is left alone)"
 $vs = Join-Path $s 'vdfsafe'

@@ -184,6 +184,8 @@ function Install-Plus($o) {
     $tpl = Join-Path $dst 'fps\mhfz-fps.ini'
     $keptBackend = if ($o.Keep -and (Test-Path $tpl)) { @([IO.File]::ReadAllLines($tpl) | Where-Object { $_ -match '^\s*d3d9_backend\s*=' } | ForEach-Object { ($_ -split '=', 2)[1].Trim() })[0] } else { $null }
     Get-ChildItem $dst -Recurse -File -Filter '*.old-*' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue   # (moved aside last time)
+    $hadEnglish = @{}   # (per game: the English data there before this copy - see the English setting below)
+    foreach ($s in 'meze', 'rain') { $hadEnglish[$s] = Test-Path (Join-Path $dst "english\$s\manifest.txt") }
     Copy-Files @((Join-Path $pkg 'payload'), (Join-Path $PSScriptRoot 'SteamShortcuts.ps1'), (Join-Path $PSScriptRoot 'Uninstall.ps1'), (Join-Path $PSScriptRoot 'Report.ps1')) $dst
     if ($keptBackend) { Set-Backend $tpl $keptBackend }
     Remove-Item (Join-Path $dst 'MHFZ-Plus-Settings.exe') -Force -ErrorAction SilentlyContinue   # (1.3 and older: now the MHFZ Plus app)
@@ -196,13 +198,14 @@ function Install-Plus($o) {
     $iniPath = Join-Path $dst 'MHFZ-Plus.ini'
     $ini = Read-Ini $iniPath
     if (-not $ini.Contains('general')) { $ini['general'] = [ordered]@{} }
-    # ($o.Keep, the in-app update: the player's choices stay as they are - a public download has no English data, and
-    # writing its "English off" would switch off a translation someone has)
+    # ($o.Keep, the in-app update: the player's choices stay as they are. One exception: English comes with this update
+    # where the install had none - the GitHub download had no English before 1.5.1 - so its "off" was never a choice: on)
     if ($servers -and -not ($o.Keep -and $ini['general'].Contains('server'))) { $ini['general']['server'] = $servers[0] }
     foreach ($s in $servers) {
         if (-not $ini.Contains($s)) { $ini[$s] = [ordered]@{} }
         $ini[$s]['game'] = if ($s -eq 'meze') { $o.MezeDir } else { Join-Path $o.RainDir 'Client' }
         if (-not ($o.Keep -and $ini[$s].Contains('english'))) { $ini[$s]['english'] = [int][bool]$o.English }
+        elseif (-not $hadEnglish[$s] -and "$($ini[$s]['english'])" -eq '0' -and (Test-Path (Join-Path $dst "english\$s\manifest.txt"))) { $ini[$s]['english'] = 1 }
         if (-not ($o.Keep -and $ini[$s].Contains('fps'))) { $ini[$s]['fps'] = [int][bool]$o.Fps }
         if (-not $ini[$s].Contains('fps_mode')) { $ini[$s]['fps_mode'] = if ($s -eq 'meze') { 'stay' } else { 'swap' } }
     }
@@ -350,7 +353,7 @@ function Copy-SteamArtwork($cfg, $entries) {
 
 # ------------------------------------------------------------------------------------------------ window
 $defaultTarget = if ($Target) { $Target } else { Join-Path $env:LOCALAPPDATA 'MHFZ-Plus' }
-# (the public GitHub release has no English data: the option is shown as not included)
+# (a package built without the English data: the option is shown as not included)
 $hasEnglish = Test-Path (Join-Path $pkg 'payload\english\meze\manifest.txt')
 $prevIni = Read-Ini (Join-Path $defaultTarget 'MHFZ-Plus.ini')
 $mezeFound = if ($MezeDir) { $MezeDir } elseif ($prevIni.Contains('meze')) { $prevIni['meze']['game'] } else { try { Find-MezeDir } catch { '' } }

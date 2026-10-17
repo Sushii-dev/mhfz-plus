@@ -439,6 +439,29 @@ in town.
   clicks) and L3/R3 on 10/11 (none). pad_triggers=1 (padfix.h, in the DirectInput hook input_latch uses): for an
   Xbox-type device (path with IG_, or Xbox in its name) the buttons keyconfig.cfg names for L2/R2/L3/R3 are set from
   XInput's triggers (> 30) and stick clicks. TYCHKA's helper did L2/R2 only, which left the stick clicks on L2/R2.
+
+### 2026-10-13: where the game keeps "a menu is open" (for the D-pad item bar, INPUT-PLAN.md)
+
+- Found by reading memory only: the menu finder (`re\menuprobe`, private: snapshots of the game DLL's 241 MB with and
+  without menus, keeping the bytes that never change without one and always change with one), then live recordings
+  of the candidates at about 1000 reads a second while the owner played on MezeLounge.
+- Result (offsets from the game DLL's base): `dll+0xE8E58E4` bit 30 = on a quest, in the field, no menu (clear in every
+  menu and always in town); `dll+0xE8E63C8` = 1 while a menu window is open (Start menu, submenus, item box, quest
+  board, gestures; not the chat input). No false alarm in about 9 minutes, no flicker.
+- Lessons: MezeLounge's mhfo-hd.dll loaded at 0x139E0000 (not 0x10000000), so anything with fixed addresses only works
+  where the DLL sits at its preferred base; a byte that differs "in every menu" can be a render-state cache (what was
+  drawn last) or a slot in a table rebuilt every tick - check the code that writes it and record it over time before
+  trusting it; in town no weapons or items, on a quest no NPCs or gestures; the tests' keys must count only while the
+  game window is in front (an o typed into another program stopped one recording).
+
+### 2026-10-17: the English translation in the GitHub download (1.5.1)
+
+- The release download now carries the English deltas too. Before, only zips shared by hand did: the GitHub zip had
+  none, so its setup showed English as not included and wrote `english=0`. The repository still has no translation
+  data.
+- An in-app update that brings English data to an install without it switches English on: that install's "off"
+  came from a setup that had nothing to offer. Where the data was there, a player's own "off" stays. Windows
+  (`Install.ps1`) and Linux (`mhfzplus.py`); `installtest` and `linuxtest` check both cases.
 ## Debug tooling
 
 - **Live config:** the mod re-reads `mhfz-fps.ini` whenever it changes on disk (checked twice a second). Changing `capture_trigger` or `dump_trigger` starts a capture or dump remotely. Isolation switches: `interp_vs`, `interp_xform`, `interp_up`, `interp_ps`, `lerp_nonpos`.

@@ -1,7 +1,7 @@
 # MHFZ Plus
 
 High frame rate for **Monster Hunter Frontier Z** on community servers, without changing game speed and without
-adding input latency. An optional launcher can also apply an English translation.
+adding input latency. An optional launcher can also apply an English translation, which comes with the download.
 
 > Fan project. Not affiliated with, endorsed by or connected to Capcom or any server team. Contains no Capcom code
 > and no game files. See [Legal notes](docs/LEGAL.md).

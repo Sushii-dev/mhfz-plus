@@ -88,6 +88,7 @@ The Python scripts in `tools\` read dumps and clips (`ghosts.py`, `flickerscan.p
   must all stay) and uninstalls; it also checks that a Steam shortcuts file of a layout we don't know is refused and
   left byte for byte as it was. The update also runs with the app's exe held by another process: for 3 s (waited
   for), all along as a running program's file is (moved aside), all along locked (stopped, naming the holder).
+  And an install without English data (a GitHub download before 1.5.1) gets English switched on by the update.
   `-NoPlay` leaves out the two game sessions (they open windows).
 - `tools/linuxtest.sh` does the same on Linux (or in WSL), with Wine and every window in a virtual screen: `install.sh`
   from the unzipped release against a simulated Steam (Proton) setup and a Lutris / plain Wine setup, an update

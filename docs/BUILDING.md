@@ -22,7 +22,8 @@ Everything builds on Windows 10/11 from PowerShell. No Visual Studio needed.
 .\build.ps1 -Bench             # build\pairbench.exe, the offline pairing bench
 .\build.ps1 -Profile           # build\prof\d3d9.dll with the sampling profiler, plus a link map
 .\tools\buildsettings.ps1      # build\MHFZ-Plus-App.exe (the MHFZ Plus app; tools\apptest.ps1 tests it)
-.\tools\package.ps1            # dist\MHFZ-Plus-<version>.zip (needs dist-work\english, see below)
+.\tools\package.ps1            # dist\MHFZ-Plus-<version>.zip (with dist-work\english, see below)
+.\tools\package.ps1 -Public    # dist\public\MHFZ-Plus-<version>.zip, the GitHub release (the same contents)
 ```
 
 The mod is one translation unit (`src/fps.cpp`) plus the proxy (`src/proxy.cpp`, `src/d3d9.def`). It's built
@@ -50,4 +51,5 @@ The package includes DXVK's 32-bit `d3d9.dll` (the "Graphics backend: DXVK" opti
 
 `tools\package.ps1` expects the translation data in `dist-work\english\<server>\` (a `manifest.txt` and one
 `.delta` per file, made with `tools\mkdelta.py` from original and translated game files). That data isn't in this
-repository; see [LEGAL.md](LEGAL.md#the-english-translation).
+repository (the release download has it); see [LEGAL.md](LEGAL.md#the-english-translation). Without it, the package
+has no English and says so in its README.

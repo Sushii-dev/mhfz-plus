@@ -1,8 +1,10 @@
 # Builds the shareable package: dist\MHFZ-Plus-<version>\ and dist\MHFZ-Plus-<version>.zip
 #   Install.cmd, README.txt, setup\*.ps1, payload\(MHFZ-Plus.exe, MHFZ-Plus-App.exe, ui\, version.txt, fps\, english\)
 # Usage: tools\package.ps1 [-NoBuild] [-Public]
-#   -Public   the GitHub release: no English data (derived from the game's text) -> dist\public\MHFZ-Plus-<version>.zip
-param([switch]$NoBuild, [string]$Version = "1.5.0", [switch]$Public)
+#   -Public   the GitHub release -> dist\public\MHFZ-Plus-<version>.zip. The same contents: the English translation is in
+#             both since 1.5.1 (the owner's decision). Built without dist-work\english (it isn't in the repository),
+#             a package has no English and its README says so.
+param([switch]$NoBuild, [string]$Version = "1.5.1", [switch]$Public)
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot
 # the scripts that ship: no line that only fails when it runs (an `else` cut off from its `if` broke setup in 1.4.0/1.4.1)
@@ -35,15 +37,18 @@ Copy-Item "$root\build\d3d9.dll", "$root\package\fps\mhfz-fps.ini" "$out\payload
 # DXVK 3.1.1 (32-bit d3d9.dll, unmodified; zlib license) for the "Graphics backend: DXVK" option
 New-Item -ItemType Directory -Force "$out\payload\fps\dxvk" | Out-Null
 Copy-Item "$root\third_party\dxvk-3.1.1\x32\d3d9.dll", "$root\package\fps\dxvk\LICENSE.txt", "$root\package\fps\dxvk\README.txt" "$out\payload\fps\dxvk"
-if (-not $Public) { New-Item -ItemType Directory -Force "$out\payload\english" | Out-Null; Copy-Item "$root\dist-work\english\*" "$out\payload\english" -Recurse }
+# the English translation: deltas against the player's own files (dist-work\english, made with tools\mkdelta.py)
+$english = Test-Path "$root\dist-work\english\meze\manifest.txt"
+if ($english) { New-Item -ItemType Directory -Force "$out\payload\english" | Out-Null; Copy-Item "$root\dist-work\english\*" "$out\payload\english" -Recurse }
 else {
-    $note = "This download doesn't include the English translation (it is made from the game's own text, so it isn't`r`n" +
-            "published). Everything about it below doesn't apply; setup offers only the frame-rate mod.`r`n`r`n"
+    Write-Warning "no dist-work\english: this package has no English translation"
+    $note = "This build doesn't include the English translation (its data isn't in the source repository).`r`n" +
+            "Everything about it below doesn't apply; setup offers only the frame-rate mod.`r`n`r`n"
     foreach ($f in "$out\README.txt", "$out\payload\README.txt") { $x = [IO.File]::ReadAllText($f); $i = $x.IndexOf("`n", $x.IndexOf("====")) + 1; [IO.File]::WriteAllText($f, $x.Substring(0, $i) + "`r`n" + $note + $x.Substring($i).TrimStart("`r", "`n")) }
 }
 
 # sanity: every delta named in the manifests is there, and the scripts parse in Windows PowerShell 5.1
-foreach ($s in $(if ($Public) { @() } else { 'meze', 'rain' })) {
+foreach ($s in $(if ($english) { 'meze', 'rain' } else { @() })) {
     foreach ($line in Get-Content "$out\payload\english\$s\manifest.txt") {
         if (-not $line -or $line.StartsWith('#')) { continue }
         $d = ($line -split '\|')[5]
